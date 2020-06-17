@@ -1,0 +1,2996 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+#
+# PrimerPrep
+#
+# This program is a tool that helps in preparing a primer. The
+# program loads language texts, counts words and letters, and
+# suggests a teaching order for introducing the letters of the
+# language in a primer. It also can produce word concordances
+# and sequences of available words in a specific lesson.
+#
+# When run directly, this script will create and execute an instance
+# of the PrimerPrepWindow class.
+#
+# by Jeff Heath, SIL Chad
+#
+# © 2019 SIL International
+#
+# Modifications:
+# 3.10 JCH Jun 2020
+#    Add help files in Dari and Pashto
+# 3.05 JCH Oct 2019
+#    Use Word Joiner (U+2060) instead of ZWSP (U+200B) in ZWJ attachment code
+#    (ZWSP is needed for Khmer and other languages)
+# 3.04 JCH Jun 2019
+#    Bug fix - unbalanced paren if separate combining diacritics is checked
+# 3.03 JCH Jun 2019
+#    Handle input from FreezeArabicForms (ZWJs for contextual forms)
+# 3.02 JCH Jun 2019
+#    Make sure isRTL gets initialized, even if interface isn't set
+#    Fix logger code, fix WordEdit path when there are no roots
+# 3.01 JCH Jun 2019
+#    Base dialogs on window not analysis object, don't show zero counts in teaching order
+#    Verify data model number on project save/load, be smarter about SFM load based on markers
+#    Handle change of separate combining diacritics more accurately (updates character lists)
+#    Don't open sightWordsDialog if there is no row selected
+# 3.00 JCH May 2019
+#    Switch to Glade UI, implemented internationalization with gettext
+# 2.06 JCH Apr 2019
+#    After adding a sight word lesson, select that lesson to make sure it is displayed
+# 2.05 JCH Apr 2019
+#    Fix teachingOrder existance code
+#    Add 'nj' to recommended digraphs (from Maba)
+# 2.04 JCH Apr 2019
+#    Fix French word-forming and word-breaking terms
+# 2.03 JCH Apr 2019
+#    Implement Save/Load Project
+#    Fix teaching order calculation by types (words only once)
+#    Fix double-click in WordList, sometimes updated wrong word
+#    Fix word sort order - wasn't using the custom sort routine
+# 2.02 JCH Mar 2019
+#    Deactive Save Teaching Order menu item, until it makes sense
+#    Manual change in word divisions also provokes recalculation of teaching order
+#    On manual word divisions, get confirmation if word is too different (LevDist < 0.5)
+# 2.01 JCH Mar 2019
+#    Rewrote help page to reflect major changes with screen shots
+#    Made draft of French help page
+# 2.00 JCH Feb 2019
+#    Redesigned interface with tabbed interface
+#    Word Discovery tab contains all tools for defining files to load/words/affixes/breaks/digraphs/etc
+#    Double-clicking a word allows manual editing of affixes (or excluding the word entirely)
+#    Addition of a filter text box allows filtering/finding words in the word list
+#    Allow addition of sight word "lessons" (lines) in teaching order
+#    Track texts for each lesson, and show untaught residue (word-forming characters only) in red
+#    Handle letters and combining marks based on unicodedata (so works better on non-Roman scripts)
+# 1.04 JCH Feb 2018
+#    Corrections in French help file (thanks to Dominique Henchoz)
+# 1.03 JCH Feb 2018
+#    Save interface selection and two configuration options to .ini file in APPDATA
+#    Added French help file (.html)
+#    Corrections to French interface (thanks to Dominique Henchoz)
+# 1.02 JCH Feb 2018
+#    Add French interface
+# 1.01 JCH Feb 2018
+#    Sort concordance entries so longest ones appear first
+# 1.00 JCH Jan 2018
+#    Add option to treat combining diacritics separately
+# 0.98 JCH Nov 2017
+#    Correctly processes SFMs that contain an underscore
+#    Write text files with a BOM for easier identification
+#    Use only spaces to separate example words in teaching order list
+#       (commas considered vowel marks in Scheherazade Compact with Graphite)
+
+APP_NAME = "PrimerPrep"
+progVersion = "3.10"
+progYear = "2020"
+dataModelVersion = 1
+DEBUG = False
+
+import sys
+import logging
+logger = logging.getLogger(APP_NAME)
+if DEBUG:
+    logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.WARNING)
+if sys.version_info[0] < 3:
+    logger.error('This script requires Python 3')
+    exit()
+from gi import require_version
+require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, Pango
+import os
+import re
+import codecs
+import unicodedata
+import xml.etree.ElementTree as ET
+import pickle
+import numpy as np
+import configparser
+import webbrowser
+#  for internationalization
+import gettext
+import json
+
+
+# global variable to store the program path
+myGlobalProgramPath = ''
+# global variable to store the current working directory path
+myGlobalPath = ''
+# global instance of Renderer for managing fonts in the program (esp. TreeView)
+myGlobalRenderer = None
+#  global variable to hold the Glade builder - needed for loading UI elements
+myGlobalBuilder = None
+# global variable to hold the main window - needed as parent for various dialogs
+myGlobalWindow = None
+# global variable for the interface language (English by default)
+myGlobalInterface = 'en'
+# global variable for the config object (so we can update settings and save them out)
+myGlobalConfig = configparser.ConfigParser()
+# global variable for holding the page index of the GTK notebook
+myGlobalNotebookPage = 0
+
+
+CSS = """
+GtkNotebook tab {
+    background-color: Silver;
+    border: 1px black;
+    border-style: solid solid none solid;
+}
+GtkNotebook tab:active {
+    background-color: white;
+    border: 1px black;
+    border-style: solid solid none solid;
+}
+
+"""
+
+# present a message to the user
+def SimpleMessage(title, msgType, msg):
+    global myGlobalBuilder
+    dlg = myGlobalBuilder.get_object('simpleMessageDialog')
+    dlg.set_title(title)
+    myGlobalBuilder.get_object('simpleMessageImage').set_from_icon_name(msgType, Gtk.IconSize.DIALOG)
+    myGlobalBuilder.get_object('simpleMessageLabel').set_text(msg)
+    dlg.show_all()
+    dlg.run()
+    dlg.hide()
+
+# present a Y/N question to the user
+def SimpleYNQuestion(title, msgType, msg):
+    global myGlobalBuilder
+    dlg = myGlobalBuilder.get_object('simpleYNQuestionDialog')
+    myGlobalBuilder.get_object('simpleYNQuestionImage').set_from_icon_name(msgType, Gtk.IconSize.DIALOG)
+    myGlobalBuilder.get_object('simpleYNQuestionLabel').set_text(msg)
+    dlg.show_all()
+    response = dlg.run()
+    dlg.hide()
+    return (response == 1)
+
+
+
+class Renderer:
+    '''A class used to hold font rendering information
+    
+    Creating an instance of this class loads the standard fonts and renderers
+    used in PrimerPrep. Use SelectFont to select/change to a new vernacular font.
+    
+    Attributes:
+      fontName (str) - current font selected for displaying vernacular text
+      numFontDesc (Pango.FontDescription) - font info for numeric text
+      numRendererText (Gtk.CellRendererText) - renderer for numeric text
+      vernFontDesc (Pango.FontDescription) - font info for vernacular text
+      vernRendererText (Gtk.CellRendererText) - renderer for vernacular text
+    '''
+    
+    def SelectFont(self):
+        '''Let user select a font using the standard dialog, modify vernacular renderer.
+        
+        Parameter: parent (Window object) - parent window for centering dialog
+        Return value: True if font was selected and changed
+        '''
+        global myGlobalWindow
+        fontDlg = Gtk.FontChooserDialog(_("Select the font for displaying vernacular text"))
+        fontDlg.set_transient_for(myGlobalWindow.window)
+        fontDlg.set_font(self.fontName)
+        result = fontDlg.run()
+        if result == Gtk.ResponseType.OK:
+            self.fontName = fontDlg.get_font()
+            # set up the font description and renderer for vernacular text
+            self.vernFontDesc = Pango.FontDescription(self.fontName)
+            self.vernRendererText.set_property('font-desc', self.vernFontDesc)
+        fontDlg.destroy()
+        return result == Gtk.ResponseType.OK
+    
+    def __init__(self):
+        '''Initialize this Renderer object's attributes with the defaults.
+        '''
+        self.fontName = "Charis SIL Compact 12"
+        # set up the font description and renderer for numbers in the TreeView
+        self.numFontDesc = Pango.FontDescription(self.fontName)
+        self.numRendererText = Gtk.CellRendererText()
+        self.numRendererText.set_property('font-desc', self.numFontDesc)
+        
+        # set up the font description and renderer for vernacular text in the TreeView
+        self.vernFontDesc = Pango.FontDescription(self.fontName)
+        self.vernRendererText = Gtk.CellRendererText()
+        self.vernRendererText.set_property('font-desc', self.vernFontDesc)
+
+
+class AffixesDialog:
+    '''A class used to present a dialog for specifying the affixes in the language.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for managing word-breaking/forming chars
+    '''
+    
+    def __init__(self):
+        '''Prepare dialog for defining affixes, for running later.'''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        self.dialog = myGlobalBuilder.get_object('affixesDialog')
+        self.textview = myGlobalBuilder.get_object('affixesDialogTextView')
+        # monitor keypresses so we can close the dialog on Enter
+        self.textview.connect('key-press-event', self.on_keyPress)
+    
+    def Run(self):
+        # set up the textview to use the vernacular font
+        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
+        self.textview.grab_focus()
+        self.textview.get_buffer().place_cursor(self.textview.get_buffer().get_end_iter())
+        self.dialog.show_all()
+        response = self.dialog.run()
+        # don't hide the dialog yet, as we run it until or cancel
+        #self.dialog.hide()
+        return (response == 1)
+    
+    def SetAffixes(self, affixes):
+        # put the affix list into the textview
+        buf = self.textview.get_buffer()
+        buf.set_text(' '.join(affixes))
+    
+    def GetAffixes(self):
+        buf = self.textview.get_buffer()
+        txt = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        return txt
+    
+    def on_keyPress(self, widget, event):
+        if event.get_keycode()[1] == 13:
+            # Enter was typed, click OK
+            self.dialog.activate_default()
+            return True
+        return False
+
+
+class WordBreaksDialog:
+    '''A class used to present a dialog for specifying the
+    word-breaking and word-forming characters in the language.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for managing word-breaking/forming chars
+      wordBreakStore (listStore) - data store for word breaking chars
+      wordFormStore (listStore) - data store for word forming chars
+    '''
+    
+    def __init__(self):
+        '''Prepare dialog for defining word breaking/forming characters, for running later.'''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        self.dialog = myGlobalBuilder.get_object('wordBreaksDialog')
+        self.wordBreakStore = myGlobalBuilder.get_object('wordBreakListStore')
+        self.wordBreakTreeView = myGlobalBuilder.get_object('wordBreakTreeView')
+        #column = myGlobalBuilder.get_object('wordBreakColumn')
+        #column.set_cell_data_func(myGlobalRenderer.vernRendererText, None)
+        
+        #Gtk.TreeViewColumn(_("Word-Breaking"), myGlobalRenderer.vernRendererText, text=0)
+        #wordBreakTreeView.append_column(column)
+        # put in ascending letter order
+        self.wordBreakStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        self.wordBreakTreeView.connect("row-activated", self.on_WordBreak_doubleClick)
+        
+        self.wordFormStore = myGlobalBuilder.get_object('wordFormListStore')
+        self.wordFormTreeView = myGlobalBuilder.get_object('wordFormTreeView')
+        #column = myGlobalBuilder.get_object('wordFormColumn')
+        #column = Gtk.TreeViewColumn(_("Word-Forming"), myGlobalRenderer.vernRendererText, text=0)
+        #self.wordFormTreeView.append_column(column)
+        # put in ascending letter order
+        self.wordFormStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        self.wordFormTreeView.connect("row-activated", self.on_WordForm_doubleClick)
+    
+    def Run(self, wordBreakChars, wordFormChars):
+        # make sure TreeViews are using current font
+        myGlobalBuilder.get_object('wordBreakCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('wordFormCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        # clear the store and add each of the letters in the wordBreakChars list
+        self.wordBreakStore.clear()
+        for letter in wordBreakChars:
+            if letter != ' ' and letter != '\xa0':
+                # don't add the space or non-breaking space - they always word break, so hide
+                dispLetter = letter
+                # if the first character is a combining diacritic
+                if unicodedata.category(dispLetter[0]) == 'Mn':
+                    # then prepend the dotted circle base character
+                    dispLetter = '\u25CC' + dispLetter
+                self.wordBreakStore.append([dispLetter])
+        
+        # clear the store and add each of the letters in the wordFormChars list
+        self.wordFormStore.clear()
+        for letter in wordFormChars:
+            dispLetter = letter
+            # if the first character is a combining diacritic
+            if unicodedata.category(dispLetter[0]) == 'Mn':
+                # then prepend the dotted circle base character
+                dispLetter = '\u25CC' + dispLetter
+            self.wordFormStore.append([dispLetter])
+        
+        self.dialog.show_all()
+        response = self.dialog.run()
+        self.dialog.hide()
+        return (response == 1)
+    
+    def on_WordBreak_doubleClick(self, widget, row, col):
+        '''Shift the activated letter to the word-forming (non-break) list
+        
+        Parameters: widget, row - for accessing the active row in the TreeView
+        '''
+        model = widget.get_model()
+        # Get the letter for this row
+        letter = model[row][0]
+        # remove this letter from the breaking list and add it to the forming list
+        self.wordBreakStore.remove(model[row].iter)
+        self.wordFormStore.append([letter])
+        # make sure it is selected and visible
+        for row in self.wordFormStore:
+            if row[0] == letter:
+                self.wordFormTreeView.get_selection().select_path(row.path)
+                self.wordFormTreeView.scroll_to_cell(row.path)
+                break
+    
+    def on_WordForm_doubleClick(self, widget, row, col):
+        '''Shift the activated letter to the word-breaking list
+        
+        Parameters: widget, row - for accessing the active row in the TreeView
+        '''
+        model = widget.get_model()
+        # Get the letter for this row
+        letter = model[row][0]
+        # remove this letter from the forming list and add it to the breaking list
+        self.wordFormStore.remove(model[row].iter)
+        self.wordBreakStore.append([letter])
+        # make sure it is selected and visible
+        for row in self.wordBreakStore:
+            if row[0] == letter:
+                self.wordBreakTreeView.get_selection().select_path(row.path)
+                self.wordBreakTreeView.scroll_to_cell(row.path)
+                break
+    
+    def GetWordBreakChars(self):
+        chars = []
+        for row in self.wordBreakStore:
+            letter = row[0]
+            if letter[0] == '\u25CC':
+                # remove dotted circle base before a combining diacritic
+                letter = letter[1:]
+            chars.append(letter)
+        return chars
+    
+    def GetWordFormChars(self):
+        chars = []
+        for row in self.wordFormStore:
+            letter = row[0]
+            if letter[0] == '\u25CC':
+                # remove dotted circle base before a combining diacritic
+                letter = letter[1:]
+            chars.append(letter)
+        return chars
+        
+
+class DigraphsDialog:
+    '''A class used to present a dialog for specifying the digraphs in the language.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for managing word-breaking/forming chars
+      textview (TextView object) - text field where user types/edits digraph list
+    '''
+    
+    def __init__(self):
+        '''Prepare dialog for defining digraphs, for running later.'''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        # keep track of some builder UI objects
+        self.dialog = myGlobalBuilder.get_object('digraphsDialog')
+        self.textview = myGlobalBuilder.get_object('digraphsDialogTextView')
+        # monitor keypresses so we can close the dialog on Enter
+        self.textview.connect('key-press-event', self.on_keyPress)
+    
+    def Run(self):
+        # set up the textview to use the vernacular font
+        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
+        self.textview.grab_focus()
+        self.textview.get_buffer().place_cursor(self.textview.get_buffer().get_end_iter())
+        response = self.dialog.run()
+        # don't hide the dialog yet, as we run it until valid or cancel
+        #self.dialog.hide()
+        return (response == 1)
+    
+    def SetDigraphs(self, digraphs):
+        # put the digraph list into the textview
+        buf = self.textview.get_buffer()
+        buf.set_text(' '.join(digraphs))
+    
+    def GetDigraphs(self):
+        # get the digraph list (as text) from the textview
+        buf = self.textview.get_buffer()
+        txt = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        return txt
+    
+    def on_keyPress(self, widget, event):
+        if event.get_keycode()[1] == 13:
+            # Enter was typed, click OK
+            self.dialog.activate_default()
+            return True
+        return False
+
+
+class WordEditDialog:
+    '''WordEditDialog - class to create and run a dialog to edit word info.
+    
+    Creating an instance of this class creates a dialog which presents
+    a concordance view of the given data. Each line of the data should contain
+    2 tabs, separating the data into 3 columns: prefix, item, postfix. In this
+    way the item being concorded can be aligned in the middle column. A label is
+    also passed in the __init__ method, so that information on what is being
+    concorded can be displayed.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for displaying the concordance
+      excludeWord (CheckButton object) - checked if the word should be excluded
+      divideView (TextView object) - text field where user edits word divisions
+      concordanceListStore (ListStore object) - list that holds the concordance
+    '''
+
+    def __init__(self):
+        '''Prepare dialog for editing individual words, for running later.'''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        # keep track of some builder UI objects
+        self.dialog = myGlobalBuilder.get_object("wordEditDialog")
+        self.excludeWord = myGlobalBuilder.get_object("excludeWordCheckButton")
+        self.divideView = myGlobalBuilder.get_object("divideWordTextView")
+        self.divideBuffer = myGlobalBuilder.get_object("divideWordTextBuffer")
+        self.concordanceListStore = myGlobalBuilder.get_object("concordanceListStore")
+        # monitor clicks of the exclude CheckButton
+        self.excludeWord.connect("clicked", self.on_ExcludeWord_click)
+        # monitor keypresses so we can close the dialog on Enter
+        self.divideView.connect('key-press-event', self.on_keyPress)
+    
+    def Run(self, word, affix_word, wordExcluded, data):
+        '''Run dialog for editing a word and displaying a concordance.
+        
+        Parameters: word (str) - word to edit (no formatting)
+                    affix_word (str) - word with affixes marked, e.g. re- work -ing
+                    wordExcluded (bool) - set if the word was marked as excluded
+                    data (str) - multiline string of prefix \t item \t postfix
+        '''
+        global myGlobalRenderer
+        global myGlobalBuilder
+        global myGlobalWindow
+        
+        # set up the textview to use the vernacular font
+        self.divideView.modify_font(myGlobalRenderer.vernFontDesc)
+        # make sure TreeView columns are using current font
+        myGlobalBuilder.get_object('wordConcordPreCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('wordConcordWordCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('wordConcordPostCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        
+        label = '<b>' + _("Indicate how you want to analyze the word: '{}'").format(word) + '</b>'
+        myGlobalBuilder.get_object('wordEditDialogLabel').set_markup(label)
+        self.excludeWord.set_active(wordExcluded)
+        divideWordTextBuffer = myGlobalBuilder.get_object('divideWordTextBuffer')
+        divideWordTextBuffer.set_text(affix_word)
+        
+        self.concordanceListStore.clear()
+        if len(data) > 0:
+            # we will need the data split into lines
+            lines = re.split('\n', data)
+            
+            # create the label with the number of occurrences
+            label = _("Concordance of the word: <b>{}</b>").format(word)
+            if myGlobalWindow.isRTL:
+                label += '\u200f'
+            label += _(" ({} occurrences)").format(len(lines))
+            myGlobalBuilder.get_object('wordConcordanceLabel').set_markup(label)
+            
+            # populate the list store with the concordance data
+            for line in lines:
+                preword, word, postword = re.split('\t', line)
+                self.concordanceListStore.append([preword, word, postword])
+        
+        # make sure concordance is scrolled to the top
+        myGlobalBuilder.get_object('wordEditScrolledWindow').get_vadjustment().set_value(0)
+        
+        response = self.dialog.run()
+        # don't hide the dialog yet, as we run it until valid or cancel
+        #self.dialog.hide()
+        return (response == 1)
+    
+    def on_ExcludeWord_click(self, button):
+        '''Toggle the check box for excluding the word.
+        
+        Parameters: button (unused)
+        '''
+        self.divideView.set_editable(not self.excludeWord.get_active())
+        self.divideView.set_cursor_visible(not self.excludeWord.get_active())
+        self.divideView.set_opacity(1.0 - float(self.excludeWord.get_active()) / 2)
+
+    def on_keyPress(self, widget, event):
+        if event.get_keycode()[1] == 13:
+            # Enter was typed, click OK
+            self.dialog.activate_default()
+            return True
+        return False
+
+
+class ConfigureSFMDialog:
+    '''A dialog class used collect user preferences for handling SFM files.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for managing SFM handling preferences
+      btnProcessSFMs (RadioButton object) - tells us to process SFMs
+      btnIgnoreSFMs (RadioButton object) - tells us to ignore certain SFMs
+      textIgnoreSFMs (Entry object) - text field of SFMs to ignore
+      btnOnlySFMs (RadioButton object) - tells us to only process certain SFMs
+      textOnlySFMs (Entry object) - text field of only SFMs to process
+      btnDontProcessSFMs (RadioButton object) - tells us to ignore SFMs
+    '''
+    
+    def __init__(self):
+        global myGlobalBuilder
+        
+        # keep track of some builder UI objects
+        self.dialog = myGlobalBuilder.get_object('configureSFMDialog')
+        self.textview = myGlobalBuilder.get_object('configureSFMTextView')
+        self.textbuffer = myGlobalBuilder.get_object('configureSFMTextBuffer')
+        self.removeButton = myGlobalBuilder.get_object("configureSFMRemoveButton")
+        self.ignoreButton = myGlobalBuilder.get_object("configureSFMIgnoreButton")
+        self.processButton = myGlobalBuilder.get_object("configureSFMProcessButton")
+        self.ignoreEntry = myGlobalBuilder.get_object("configureSFMIgnoreEntry")
+        self.processEntry = myGlobalBuilder.get_object("configureSFMProcessEntry")
+    
+    def Run(self, introText, initIgnoreLines, initProcessLines):
+        global myGlobalRenderer
+        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
+        self.textbuffer.set_text(introText)
+        self.ignoreEntry.set_text(initIgnoreLines)
+        self.processEntry.set_text(initProcessLines)
+        self.dialog.run()
+        self.dialog.hide()
+
+
+class ConcordanceDialog:
+    '''A class to create and run a dialog to show a concordance.
+    
+    Creating an instance of this class creates and runs a dialog which presents
+    a concordance view of the given data. Each line of the data should contain
+    2 tabs, separating the data into 3 columns: prefix, item, postfix. In this
+    way the item being concorded can be aligned in the middle column. A label is
+    also passed in the __init__ method, so that information on what is being
+    concorded can be displayed.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for displaying the concordance
+    '''
+
+    def __init__(self):
+        global myGlobalBuilder
+        
+        # keep track of some builder UI objects
+        self.dialog = myGlobalBuilder.get_object('concordanceDialog')
+    
+    def Run(self, letter, data):
+        '''Run a concordance dialog to display the given data.
+        
+        Parameters: letter (str) - letter in the teaching order for the concordance
+                    data (str) - multiline string of prefix \t item \t postfix
+        '''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        # make sure TreeView columns are using current font
+        myGlobalBuilder.get_object('concordancePreCellRendererText').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('concordanceWordCellRendererText').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('concordancePostCellRendererText').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        
+        # we will need the data split into lines
+        lines = re.split('\n', data)
+        
+        # create the label with the number of occurrences
+        label = _("Text fragments available (from your loaded texts) in the lesson for '{}'").format(letter)
+        if myGlobalWindow.isRTL:
+            label += '\u200f'
+        label += _(" ({} occurrences)").format(len(lines))
+        myGlobalBuilder.get_object('concordanceDialogLabel').set_text(label)
+        
+        # populate the list store with the data parameter
+        listStore = myGlobalBuilder.get_object("concordanceListStore")
+        listStore.clear()
+        for line in lines:
+            preword, word, postword = re.split('\t', line)
+            listStore.append([preword, word, postword])
+        
+        # make sure concordance is scrolled to the top
+        myGlobalBuilder.get_object('concordanceScrolledWindow').get_vadjustment().set_value(0)
+        
+        self.dialog.run()
+        self.dialog.hide()
+
+
+class SightWordsDialog:
+    '''A class used to present a dialog for specifying sight words.
+    
+    Attributes:
+      dialog (Dialog object) - dialog for managing sight word entry
+      textview (TextView object) - text field where user types/edits digraph list
+    '''
+    
+    def __init__(self):
+        '''Prepare dialog for defining digraphs, for running later.'''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        # keep track of some builder UI objects
+        self.dialog = myGlobalBuilder.get_object('sightWordsDialog')
+        self.textview = myGlobalBuilder.get_object('sightWordsDialogTextView')
+        self.textbuf = myGlobalBuilder.get_object('sightWordsTextBuffer')
+        # monitor keypresses so we can close the dialog on Enter
+        self.textview.connect('key-press-event', self.on_keyPress)
+    
+    def Run(self):
+        # set up the textview to use the vernacular font
+        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
+        self.textview.grab_focus()
+        self.textbuf.place_cursor(self.textbuf.get_end_iter())
+        response = self.dialog.run()
+        self.dialog.hide()
+        return (response == 1)
+    
+    def SetSightWords(self, sightWords):
+        buf = self.textview.get_buffer()
+        buf.set_text(' '.join(sightWords))
+    
+    def GetSightWords(self):
+        # get the sight words list (as text) from the textview
+        buf = self.textview.get_buffer()
+        txt = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        return txt
+    
+    def on_keyPress(self, widget, event):
+        if event.get_keycode()[1] == 13:
+            # Enter was typed, click OK
+            self.dialog.activate_default()
+            return True
+        return False
+
+
+class WordAnalysis:
+    '''A class used to load/process/hold word analysis info
+    
+    Attributes: described in the comments of the __init__ method.'''
+
+    def AddWordsFromFile(self, file):
+        '''Load all lines from the given text file and store them in the class
+        object. Consider whether file is an SFM file, and handle it properly.
+        Once data is loaded, send it to FindWords to add word data to object.
+        
+        Parameter: file (str) - file name and path of file to check
+        Return value: True if the file was loaded without error
+        '''
+        global myGlobalInterface
+        # check if this is an SFM file, configure if not done yet
+        isSFMFile = self.CheckIfSFM(file)
+        
+        # load in entire file in 'lines' list, processing SFMs as we go
+        lines = []
+        try:
+            f = codecs.open(file, 'r', encoding='utf-8')
+            firstline = True
+            prevLineRemoved = False
+            for line in f:
+                if firstline:
+                    # get rid of any Unicode BOM at the beginning of the file
+                    line = re.sub('^\ufeff', '', line)
+                    firstline = False
+                
+                if isSFMFile and not re.match(r'^\\', line) and len(lines)>0:
+                    # no SFM on this line
+                    if not prevLineRemoved:
+                        # attach to previous (with SFM) line
+                        lines[-1] = lines[-1] + ' ' + line.strip()
+                else:
+                    prevLineRemoved = False
+                    if self.sfmProcessSFMs:
+                        # remove certain SFM markers/lines in text
+                        if len(self.sfmIgnoreLines) > 0:
+                            if re.match(r'\\(' + self.sfmIgnoreLines + ')( |\n)', line):
+                                # remove entire line including text for certain SFMs
+                                line = ''
+                        # keep only certain SFM markers/lines in text
+                        if len(self.sfmOnlyLines) > 0:
+                            if not re.match(r'\\(' + self.sfmOnlyLines + ')( |\n)', line):
+                                # this SFM is not a keeper so remove entire line including text
+                                line = ''
+                        line = re.sub(r'\\\w+', '', line)  # remove any other SFMs
+                    line = line.strip()  # remove leading/trailing spaces
+                    # check to see if we have anything left in the line
+                    if len(line) > 0:
+                        # append the line to the list of lines
+                        lines.append(line)
+                    else:
+                        prevLineRemoved = True
+            f.close()
+        except Exception:
+            title = _("File error")
+            msg = _("Error. File could not be read.")
+            SimpleMessage(title, 'dialog-information', msg)
+            return False
+        
+        # store the file name/path, and all the lines in the file
+        self.fileNames.append(file)
+        self.fileLines.append(lines)
+        
+        # process the lines to find the characters and words
+        self.FindChars(lines)
+        self.FindWords(lines)
+        return True
+    
+    def CheckIfSFM(self, file):
+        '''Check if the file is an SFM file, and configure appropriately.
+        
+        Parameter: file (str) - file name and path of file to check
+        Return value: True if the file is an SFM file
+        '''
+        global myGlobalWindow
+        # assume we won't process SFMs
+        self.sfmProcessSFMs = False
+        try:
+            f = codecs.open(file, 'r', encoding='utf-8')
+            combinedLines = ""
+            line = f.readline()
+            # get rid of BOM from beginning of file, if present
+            line = re.sub('^\ufeff', '', line)
+            countSFMs = 0
+            markers = []
+            for i in range(10):
+                combinedLines = combinedLines + line[0:40]
+                if combinedLines[-1] != "\n":
+                    # we only got part of the line, so put in ellipsis and end of line
+                    if combinedLines[-1] != "\r":
+                        # put in ellipsis except special case where we got \r of \r\n
+                        combinedLines = combinedLines + '...'
+                    combinedLines = combinedLines + '\n'
+                m = re.match(r'\\(\w*) ', line)
+                if m:
+                    # line begins with backslash so we assume it is an SFM; count it
+                    countSFMs = countSFMs + 1
+                    markers.append(m.group(1))
+                # get the next line; if file is short, resulting empty string should be OK
+                line = f.readline()
+            f.close()
+        except Exception:
+            return False
+        
+        # remove newline from the end
+        combinedLines = combinedLines[:-1]
+        # consider the file an SFM file if it has at least 4 lines that start with '\'
+        if countSFMs > 4:
+            isSFMFile = True
+        else:
+            isSFMFile = False
+        # We used to only configure once, but it might be a different kind of SFM file (Scripture vs lexicon)
+        # so run configuration every time we find an SFM file
+        if isSFMFile:
+            # this is an SFM file
+            if 'lx' in markers:
+                self.sfmIgnoreLines = ''
+                self.sfmProcessLines = 'lx|pdv|xv'
+                myGlobalWindow.theConfigureSFMDialog.removeButton.set_active(True)
+                myGlobalWindow.theConfigureSFMDialog.processButton.set_active(True)
+            elif 'h' in markers or 'toc1' in markers or 'mt1' in markers:
+                self.sfmIgnoreLines = 'id|rem|restore|h|toc1|toc2|toc3'
+                self.sfmProcessLines = ''
+                myGlobalWindow.theConfigureSFMDialog.removeButton.set_active(True)
+                myGlobalWindow.theConfigureSFMDialog.ignoreButton.set_active(True)
+            
+            # run the dialog
+            initIgnoreLines = self.sfmIgnoreLines.replace('|',' ')
+            initProcessLines = self.sfmProcessLines.replace('|', ' ')
+            myGlobalWindow.theConfigureSFMDialog.Run(combinedLines, initIgnoreLines, initProcessLines)
+            self.sfmProcessSFMs = myGlobalWindow.theConfigureSFMDialog.removeButton.get_active()
+            if self.sfmProcessSFMs:
+                # user chose to remove SFMs
+                if myGlobalWindow.theConfigureSFMDialog.ignoreButton.get_active():
+                    # user chose to ignore certain SFMs, keep the list
+                    text = myGlobalWindow.theConfigureSFMDialog.ignoreEntry.get_text()
+                    text = text.strip()
+                    markers = re.split(r'\s+', text)
+                    self.sfmIgnoreLines = '|'.join(markers)
+                    self.sfmOnlyLines = ''
+                else:
+                    # user chose to only process certain SFMs, keep the list
+                    text = myGlobalWindow.theConfigureSFMDialog.processEntry.get_text()
+                    text = text.strip()
+                    markers = re.split(r'\s+', text)
+                    self.sfmOnlyLines = '|'.join(markers)
+                    self.sfmIgnoreLines = ''
+        return isSFMFile
+    
+    def FindChars(self, lines):
+        '''Takes a list of lines and for each line, break it into words which
+        are added into the words dictionary (which keeps a frequency count).
+        Also do auto-search for digraphs in each word.
+        
+        Parameter: lines (list of str) - lines of text to be analyzed
+        '''
+        # build a RegExp that can split out individual characters
+        # built outside loop because it is the same for every line
+        # make sure to attach any zero width joiners (ZWJs)
+        # but remove Word Joiners (WJs) - they are there to ensure
+        # that the ZWJs get attached to the right character
+        if self.separateCombDiacritics:
+            # RegExp that treats combining diacritics separately
+            findChars = re.compile(r'(\u200d?.(?<!\u2060)\u200d?)')
+        else:
+            # RegExp that includes combining diacritics with their preceding base characters
+            findChars = re.compile(r'(\u200d?.(?:[\u0300-\u036f]+)?(?<!\u2060)\u200d?)')
+        
+        # make sure we have identified all characters in the file
+        for line in lines:
+            # check all characters in line and if not seen before, add it
+            # to word forming or breaking list (based on unicodedata.category)
+            for char in re.findall(findChars, line):
+                if char not in self.chars:
+                    # this char has not been seen yet, mark as seen
+                    self.chars[char] = 1
+                    ch = char[0]
+                    if ch == '\u200d':
+                        # if it's a ZWJ, get the next letter
+                        ch = char[1]
+                    # add to either word forming/breaking character list
+                    if unicodedata.category(ch)[0] in 'LM':
+                        # only letters or combining marks
+                        self.wordFormChars.append(char)
+                    else:
+                        #  this would include punctuation, symbols, spaces, control codes
+                        self.wordBreakChars.append(char)
+    
+    def FindWords(self, lines):
+        '''Takes a list of lines and for each line, break it into words which
+        are added into the words dictionary (which keeps a frequency count).
+        Also do auto-search for digraphs in each word.
+        
+        Parameter: lines (list of str) - lines of text to be analyzed
+        '''
+        # build 'breaks' string with all word breaking characters for RegExp splitting
+        breaks = ''
+        for char in self.wordBreakChars:
+            # need to put '\' before special characters
+            if char in '.^$*+-?{}\\[]|()':
+                breaks = breaks + '\\'
+            breaks = breaks + char
+        
+        kWordCnt = 0
+        kWordManual = 1
+        kWordExclude = 2
+        kWordAffixForm = 3
+        kWordMarkupForm = 4
+        # process each line individually
+        for line in lines:
+            # make list of words split by spaces, punctuation, other word break chars
+            linewords = re.split('[\\s' + breaks + ']+', line)
+            for word in linewords:
+                #logger.debug('"', repr(word), '"')
+                if (len(word) == 0) or re.match(r'^[-\d]+$', word):
+                    # this word is empty or just numbers/hyphens, skip to next word
+                    continue
+                word = word.lower()
+                if word in self.words:
+                    # we've already seen this word, just increase its count
+                    self.words[word][kWordCnt] += 1
+                else:
+                    # first time to see this word, set count to 1, set defaults for all other list fields
+                    self.words[word] = [1, False, False, word, '<b>' + word + '</b>']
+                    # only need to Auto-Search for Digraphs if this is a new word
+                    if self.autoSearchDigraphs:
+                        # search for certain common digraphs
+                        for digraph in re.findall(
+                            r'(ch|kh|kp|gb|sh|th|^mb|^nd|^nj|^nz|^\u014bg)', word):
+                            if digraph not in self.digraphs:
+                                self.digraphs.append(digraph)
+                        ## search for doubled consonants and vowels (only a-z)
+                        #for double in re.findall(r'([a-zA-Z])\1', word):
+                            #double *= 2
+                            #if double not in self.digraphs:
+                                #self.digraphs.append(double)
+        
+        # process the affixes as well, if any; also sets dataChanged to True to force recalculating teaching order
+        self.ProcessAffixes()
+    
+    
+    def GetNumFiles(self):
+        '''Returns the current number of texts in the WordAnalysis object
+        '''
+        return len(self.fileNames)
+    
+    def GetNumWords(self):
+        '''Returns the current number of words in the WordAnalysis object
+        '''
+        return len(self.words)
+    
+    def UpdateFileList(self, listStore, fullPath):
+        '''Update the file list in the listStore provided to reflect the current
+        list of files in the WordAnalysis object.
+        
+        Parameter: listStore (ListStore object) - data storage for current word list
+                   fullPath (Boolean) - True if full path should be shown
+        '''
+        # start by clearing the list
+        listStore.clear()
+        
+        # add each of the words and its count
+        for fileName in self.fileNames:
+            if fullPath:
+                name = fileName
+            else:
+                name = fileName.split('\\')[-1]
+            listStore.append([name])
+    
+    def UpdateWordList(self, listStore):
+        '''Update the word list in the listStore provided to reflect the current
+        list of words in the WordAnalysis object.
+        
+        Parameter: listStore - data storage for current word list
+        '''
+        # start by clearing the list
+        listStore.clear()
+        
+        kWordCnt = 0
+        kWordManual = 1
+        kWordExclude = 2
+        kWordAffixForm = 3
+        kWordMarkupForm = 4
+        # add each of the words and its count
+        for word, word_info in self.words.items():
+            # put zero-width space in front, or markup doesn't appear
+            markup_word = '\u200B' + word_info[kWordMarkupForm]
+            listStore.append([markup_word, word_info[kWordCnt], word])
+        # start with descending count order
+        # (but user can sort by clicking column headers)
+        listStore.set_sort_column_id(1, Gtk.SortType.DESCENDING)
+    
+    def CalculateTeachingOrder(self, excludeAffixes, countWords):
+        '''Using the list of words in this WordAnalysis class object,
+        make sure we have broken all words into a list of graphemes and
+        then calculate the teaching order of the graphemes.
+        
+        Parameter: excludeAffixes (bool) - True if we exclude affixes, False if they are counted as words
+                   countWords (bool) - True if we count all words (tokens), False if we count words only once (types)
+        '''
+        #
+        # Clear all data on teaching order and on how words split into graphemes in this WordAnalysis object.
+        #
+        # wordsAsGraphemes: dict of { word, list of graphemes in word }
+        self.wordsAsGraphemes = {}
+        # graphemeUse: dict of { grapheme, grapheme count in all texts }
+        self.graphemeUse = {}
+        # teachingOrder: list of graphemes (letters) in order to present in teaching
+        #   numbers in this list indicate sight word entries, with number being index (plus one) to list
+        self.teachingOrder = []
+        # sightWords: list of lists of sight words
+        self.sightWords = []
+        # graphemeExampleWords: dict of { grapheme, list of sample words to introduce the grapheme }
+        self.graphemeExampleWords = {}
+        
+        # we generally want to keep our sample lesson texts, stored in the lessonTexts dictionary by grapheme
+        # but since we deleted any sight word lessons, we need to remove the texts connected to sight word lessons
+        # we work from a list of the keys, so that as we delete dictionary entries, we aren't disturbing the loop
+        for gr in list(self.lessonTexts.keys()):
+            if isinstance(gr, int):
+                # remove this sight word lesson text
+                del self.lessonTexts[gr]
+        
+        if len(self.words) == 0:
+            # no words to process
+            return
+        
+        # convert the digraphs list into a RegExp OR group
+        digraphStr = '|'.join(self.digraphs)
+        if len(digraphStr) > 0:
+            digraphStr += '|'
+        
+        # build a RegExp that can split out individual graphemes including digraphs (from list)
+        # built outside loop because it is the same for every word
+        # make sure to include any zero width joiners (ZWJs)
+        if self.separateCombDiacritics:
+            # RegExp that treats combining diacritics separately
+            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'.)(?<!\u200b)\u200d?)')
+        else:
+            # RegExp that includes combining diacritics with their preceding base characters
+            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'.(?:[\u0300-\u036f]+)?)(?<!\u200b)\u200d?)')
+        
+        kWordCnt = 0
+        kWordManual = 1
+        kWordExclude = 2
+        kWordAffixForm = 3
+        kWordMarkupForm = 4
+        
+        # analysisWords: dict of { word, word count in all texts }
+        self.analysisWords = {}
+        for word, word_info in self.words.items():
+            # split into affixes
+            affixList = word_info[kWordAffixForm].split(' ')
+            for morph in affixList:
+                # process each affix or root
+                if (not excludeAffixes) or (not morph.endswith('-') and not morph.startswith('-')):
+                    # either we aren't excluding affixes, or this isn't an affix
+                    if not word_info[kWordExclude]:
+                        # store this "word", with its count (adding to existing one if found)
+                        self.analysisWords[morph] = \
+                            self.analysisWords.get(morph, 0) + (word_info[kWordCnt] if countWords else 1)
+                    else:
+                        # don't count the graphemes of excluded words, but make sure it's in the word list (with zero count)
+                        self.analysisWords[morph] = 0
+                    morphNoHyphen = morph
+                    if morphNoHyphen.endswith('-') or morphNoHyphen.startswith('-'):
+                        # this is an affix, so remove the hyphen before splitting into graphemes
+                        morphNoHyphen = morphNoHyphen.replace('-', '')
+                    # make the morpheme into a list of graphemes
+                    graphemes = re.findall(findGraphemes, morphNoHyphen)
+                    for grapheme in graphemes:
+                        if not word_info[kWordExclude]:
+                            # increase count of uses for this grapheme by num of words
+                            # (if first time, get default 0 then add num of words)
+                            self.graphemeUse[grapheme] = \
+                                self.graphemeUse.get(grapheme, 0) + (word_info[kWordCnt] if countWords else 1)
+                        else:
+                            # just make sure the grapheme is in the graphemeUse dictionary
+                            if grapheme not in self.graphemeUse:
+                                self.graphemeUse[grapheme] = 0
+                    self.wordsAsGraphemes[morph] = graphemes
+        
+        teachingOrderAlgorithm = "elimination"
+        if teachingOrderAlgorithm == "elimination":
+            # arrange the teaching order using the elimination algorithm
+            #  N.B. this performs the function of StoreTeachingOrderBuildExampleWordsLists as well
+            
+            # make a copy of the graphemeUse dictionary, as we will be changing it
+            graphemeUseCopy = self.graphemeUse.copy()
+            # make a copy of the words dictionary, as we will be changing it
+            wordsCopy = self.analysisWords.copy()
+            # start with an empty teaching order
+            self.teachingOrder = []
+            while len(graphemeUseCopy) > 0:
+                # dict of { grapheme, sum of frequencies of all words that use this grapheme }
+                currGraphemeFreq = {}
+                for gr in graphemeUseCopy:
+                    # find the sum of the frequencies of all the words having this grapheme
+                    freq = 0
+                    for word in wordsCopy:
+                        # if this word contains the grapheme, add it to the list
+                        if gr in self.wordsAsGraphemes[word]:
+                            # this word contains the grapheme, add word count (tokens) or just 1 if counting types
+                            freq += wordsCopy[word] if countWords else 1
+                    currGraphemeFreq[gr] = freq
+                # find min value of currGraphemeFreq, introduce as last grapheme
+                # (if there is more than one with same count, it will choose one "randomly")
+                last = min(currGraphemeFreq, key=currGraphemeFreq.get)
+                if graphemeUseCopy[last] > 0:
+                    # only add to teaching order if it is counted
+                    self.teachingOrder.insert(0, last)
+                # build a dictionary of words (with counts) that use this grapheme
+                wordsWithGrapheme = {}
+                for word in wordsCopy:
+                    # if this word contains the grapheme, add it to the list
+                    if last in self.wordsAsGraphemes[word]:
+                        wordsWithGrapheme[word] = self.analysisWords[word]
+                # delete all of the words found, so they are not used in calculations for more frequent graphemes
+                # (those words are excluded because the infrequent grapheme it contains hasn't been introduced yet)
+                for word in wordsWithGrapheme:
+                    del wordsCopy[word]
+                # store the list of example words for this grapheme, in decreasing order of use
+                self.graphemeExampleWords[last] = sorted(wordsWithGrapheme, key=wordsWithGrapheme.get, reverse=True)
+                # remove this grapheme from the dictionary and repeat the process
+                del graphemeUseCopy[last]
+        else:
+            # teachingOrderAlgorithm == "decreasing grapheme frequency"
+            # sort the letters by order of decreasing occurance, as draft teaching order
+            graphemeList = sorted(self.graphemeUse, key=self.graphemeUse.get, reverse=True)
+            # store this teaching order and build lists of example words
+            self.StoreTeachingOrderBuildExampleWordsLists(graphemeList)
+        
+        # reset flag for recording a change to the data
+        self.dataChanged = False
+    
+    def StoreTeachingOrderBuildExampleWordsLists(self, graphemeList):
+        '''Store the given list as the teaching order, starting with the last item
+        of the list, and as graphemes are stored, build a list of words that use this grapheme.
+        As words are used, they are removed from the word list, so they don't appear as example
+        words any higher up in the teaching order.
+        
+        Parameter: graphemeList (list of str) - lines of text to be analyzed
+        '''
+        # make a copy of the words dictionary, as we will be changing it
+        wordsCopy = self.analysisWords.copy()
+        self.teachingOrder = []
+        while len(graphemeList) > 0:
+            # get the least frequent grapheme
+            last = graphemeList.pop()
+            self.teachingOrder.insert(0, last)
+            # if this is a sight word lesson, don't need to do any of this
+            if not isinstance(last, int):
+                # build a dictionary of words (with counts) that use this grapheme
+                wordsWithGrapheme = {}
+                for word in wordsCopy:
+                    # if this word contains the grapheme, add it to the list
+                    if last in self.wordsAsGraphemes[word]:
+                        wordsWithGrapheme[word] = self.analysisWords[word]
+                # delete all of the words found, so they are not used in calculations for more frequent graphemes
+                # (those words are excluded because the infrequent grapheme it contains hasn't been introduced yet)
+                for word in wordsWithGrapheme:
+                    del wordsCopy[word]
+                # store the list of example words for this grapheme, in decreasing order of use
+                self.graphemeExampleWords[last] = sorted(wordsWithGrapheme, key=wordsWithGrapheme.get, reverse=True)
+    
+    def RunSightWordsDialog(self, sightWordList):
+        '''Run a dialog to collect sight words.
+        
+        Parameter: sightWordList (list of str) - current list of words (or empty list)
+        Return value: True if the sight word list changed, otherwise False
+        '''
+        global myGlobalWindow
+        # save a copy of the list to compare later
+        saveSightWords = sightWordList[:]
+        # run the SightWordsDialog until it is valid
+        valid = False
+        myGlobalWindow.theSightWordsDialog.SetSightWords(sightWordList)
+        while not valid:
+            if myGlobalWindow.theSightWordsDialog.Run():
+                # user clicked OK in the SightWordsDialog dialog so collect list in entry field
+                text = myGlobalWindow.theSightWordsDialog.GetSightWords()
+                text = text.strip()
+                text = text.lower()
+                sightWordList = re.split(r'\s+', text)
+                # assume we have a valid input
+                valid = True
+                if sightWordList == [''] or sightWordList == ['', '']:
+                    # empty list is valid but make it really empty
+                    sightWordList = []
+                else:
+                    # make sure they don't repeat using a set() trick
+                    if len(sightWordList)!=len(set(sightWordList)):
+                        # the elements in the list are not unique
+                        valid = False
+                if not valid:
+                    # did not pass validity test, inform the user to correct the data
+                    title = _("Error")
+                    msg = _("All sight words must be separated by spaces, and must be unique.\n\nPlease try again.")
+                    SimpleMessage(title, "dialog-error", msg)
+            else:
+                # user clicked cancel, which is valid, but we do nothing, just make sure list is None
+                sightWordList = None
+                valid = True
+        myGlobalWindow.theSightWordsDialog.dialog.hide()
+        
+        # return the sight word list (could be empty)
+        return sightWordList
+    
+    def InsertSightWordsInTeachingOrder(self, posn, wordList):
+        '''Insert a sight word lesson at the given position in the teaching order,
+        and attach the given list of sight words to the lesson.
+        
+        Parameter: posn (int) - index of the teaching order at which to insert the sight words lesson
+                   wordList (list of str) - list of the sight words to add
+        Return value: int with the index into the sightWords list
+        '''
+        # add this list of sight words at the end of the sightWords list (it is a list of lists)
+        self.sightWords.append(wordList)
+        # get index into the sightWords list and insert that in the teaching order
+        swIdx = len(self.sightWords)
+        self.teachingOrder.insert(posn, swIdx)
+        return swIdx
+    
+    def RemoveSightWordsFromTeachingOrder(self, posn):
+        '''Remove the sight word lesson at the given position in the teaching order.
+        
+        Parameter: posn (int) - index of the teaching order from which to remove a sight words lesson
+        Return value: int with the index into the sightWords list
+        '''
+        # remove that sight word lesson from the teaching order
+        swIdx = self.teachingOrder.pop(posn)
+        # remove that list of sight words from the sightWords list
+        self.sightWords.pop(swIdx-1)
+        for i, letter in enumerate(self.teachingOrder):
+            if isinstance(letter, int):
+                if letter > swIdx:
+                    # shift this index earlier
+                    self.teachingOrder[i] -= 1
+                    # adjust the lessonTexts dictionary
+                    if letter in self.lessonTexts:
+                        self.lessonTexts[letter-1] = self.lessonTexts[letter]
+                        del self.lessonTexts[letter]
+        return swIdx
+    
+    def TeachingOrderModified(self, listStore):
+        '''The order of graphemes in the teaching order has been modified.
+        (We arrive here following a drag-and-drop in the teaching order.)
+        Build up the teaching order list from the ListStore, and recalculate
+        the example words that are possible with this new order.
+        
+        Parameter: listStore - data storage for current teaching order
+        '''
+        # build up the graphemeList from the listStore
+        graphemeList = []
+        for row in listStore:
+            graph = row[0]
+            if graph[0] == '\u25CC':
+                # character that has the dotted circle base prepended, delete that base
+                graph = graph[1:]
+            elif graph == '\u2686\u2686':
+                # this is a sight word, find the sight word index from hidden fourth column
+                graph = row[3]
+            graphemeList.append(graph)
+        
+        # store this teaching order and build lists of example words
+        self.StoreTeachingOrderBuildExampleWordsLists(graphemeList)
+    
+    def UpdateTeachingOrderList(self, listStore):
+        '''Update the teaching order list in the listStore provided to reflect the
+        current order proposed in the WordAnalysis object.
+        
+        Parameter: listStore - data storage for current teaching order
+        '''
+        # start by clearing the listStore
+        listStore.clear()
+        # if there isn't a teachingOrder yet, just return
+        if not hasattr(self, 'teachingOrder'):
+            return
+        # add each element in the teaching order
+        for letter in self.teachingOrder:
+            if isinstance(letter, int):
+                # this is a sight word entry, eyeballs for display letter
+                dispLetter = '\u2686\u2686'
+                cnt = ''
+                # load list of words
+                swIdx = letter
+                words = self.sightWords[swIdx-1]
+            else:
+                dispLetter = letter
+                # if the first character is a combining diacritic
+                if unicodedata.category(dispLetter[0]) == 'Mn':
+                    # (previously test was if 0x0300 <= ord(dispLetter[0]) <= 0x036f)
+                    # then prepend the dotted circle base character
+                    dispLetter = '\u25CC' + dispLetter
+                cnt = str(self.graphemeUse[letter])
+                words = self.graphemeExampleWords[letter]
+                # set sight word index as zero, so we can quickly know that this is not a sight word lesson
+                swIdx = 0
+            # make a list of words as a string
+            wordList = '  '.join(words)
+            ## this string could be real long, so truncate it
+            ## earlier ListView had rendering problem, diacritics shift left!
+            #if len(wordList) > 120:
+                ## add ellipsis at the end of truncated string
+                #wordList = wordList[0:120] + '\u2026'
+            listStore.append([dispLetter, cnt, wordList, swIdx])
+    
+    def TeachingOrderDoubleClick(self, widget, row):
+        '''User double-clicked on a lesson in the teaching order. If a letter,
+        display a concordance of multi-word phrases that can be produced in the
+        selected lesson. If a sight word lesson, edit the sight words.
+        
+        Parameters: widget, row - for accessing the active row in the TreeView
+        '''
+        global myGlobalWindow
+        model = widget.get_model()
+        # Get the letter for this row
+        letter = model[row][0]
+        if letter == "\u2686\u2686":
+            # this is a sight word row, so offer to edit the sight words
+            teachingOrderIdx = row.get_indices()[0]
+            sightWordIdx = self.teachingOrder[teachingOrderIdx] - 1
+            sightWordList = self.RunSightWordsDialog(self.sightWords[sightWordIdx])
+            if sightWordList is not None:
+                # user didn't click cancel
+                if len(sightWordList) == 0:
+                    # should we make sure that user wants to erase those sight words?
+                    self.RemoveSightWordsFromTeachingOrder(teachingOrderIdx)
+                    myGlobalWindow.teachingOrderListStore.remove(model.get_iter(row))
+                else:
+                    # just update the sightwords entry
+                    self.sightWords[sightWordIdx] = sightWordList
+                    model[row][2] = '  '.join(sightWordList)
+        else:
+            phrases = self.GetPhrases(row[0])
+            if len(phrases) > 0:
+                # only display a concordance if we have data
+                # create and run a class instance of ConcordanceDialog
+                myGlobalWindow.theConcordanceDialog.Run(letter, phrases)
+    
+    def GetTeachingOrderText(self):
+        '''Build a text version of the teaching order list.
+        
+        Return value: str of entire teaching order (formatted for text output)
+        '''
+        txt = ''
+        # add each element in the teaching order
+        for letter in self.teachingOrder:
+            if isinstance(letter, int):
+                # this is a sight word entry, eyeballs for display letter
+                dispLetter = _("StWds")
+                cnt = ''
+                # load list of words
+                words = self.sightWords[letter-1]
+            else:
+                dispLetter = letter
+                # if the first character is a combining diacritic
+                if unicodedata.category(dispLetter[0]) == 'Mn':
+                    # (previously test was if 0x0300 <= ord(dispLetter[0]) <= 0x036f)
+                    # then prepend the dotted circle base character
+                    dispLetter = '\u25CC' + dispLetter
+                cnt = str(self.graphemeUse[letter])
+                words = self.graphemeExampleWords[letter]
+            # make a list of words as a string
+            wordList = '  '.join(words)
+            txt += dispLetter+'\t'+ str(cnt)+'\t'+wordList+'\n'
+        return txt
+    
+    def ReprocessTexts(self):
+        '''Reprocess all texts (given modified word break character information)
+        '''
+        # clear out current word data
+        self.words = {}
+        # find words in each file again
+        for i in range(len(self.fileNames)):
+            #logger.debug('Reprocessing:', self.fileNames[i].encode('utf-8'))
+            self.FindWords(self.fileLines[i])
+    
+    def ProcessAffixes(self):
+        '''Words or affixes have changed. Make sure that all words in the word list have affixes marked appropriately.'''
+        # create lists of prefixes and suffixes (by looking at position of '-' in affix list elements)
+        prefixes = [a[:-1] for a in self.affixes if a.endswith('-')]
+        suffixes = [a[1:] for a in self.affixes if a.startswith('-')]
+        #  create RegEx's for finding affixes 
+        prefMatch = re.compile('^(' + '|'.join(a for a in prefixes) + ')')
+        suffMatch = re.compile('(' + '|'.join(a for a in suffixes) + ')$')
+        prefMarkupMatch = re.compile('^<b>(' + '|'.join(a for a in prefixes) + ')')
+        suffMarkupMatch = re.compile('(' + '|'.join(a for a in suffixes) + ')</b>$')
+        
+        kWordCnt = 0
+        kWordManual = 1
+        kWordExclude = 2
+        kWordAffixForm = 3
+        kWordMarkupForm = 4
+        
+        zwj = ''
+        if 'Scheherazade' in myGlobalRenderer.fontName or 'Harmattan' in myGlobalRenderer.fontName:
+            # include zero width joiners (ZWJ, U+200D) for these two fonts, to approximate joining across markup
+            zwj = '\u200d'
+        
+        # for each entry in the word list, see if there are any affixes to update
+        for word, word_info in self.words.items():
+            if not word_info[kWordManual] and not word_info[kWordExclude]:
+                # this hasn't been marked up manually or excluded, so check to see if there are affixes to mark
+                affix_word = word
+                # process one each of any affixes
+                if len(prefixes) > 0:
+                    affix_word = prefMatch.sub('\\1- ', affix_word)
+                if len(suffixes) > 0:
+                    affix_word = suffMatch.sub(' -\\1', affix_word)
+                word_info[kWordAffixForm] = affix_word
+                
+                markup_word = '<b>' + word + '</b>'
+                # process one each of any affixes
+                if len(prefixes) > 0:
+                    markup_word = prefMarkupMatch.sub('<span foreground="gray">\\1'+zwj+'</span><b>'+zwj, markup_word)
+                if len(suffixes) > 0:
+                    markup_word = suffMarkupMatch.sub(zwj+'</b><span foreground="gray">'+zwj+'\\1</span>', markup_word)
+                word_info[kWordMarkupForm] = markup_word
+        
+        # make sure we recalculate the teaching order when we display it
+        self.dataChanged = True
+
+
+    def RunAffixesDialog(self):
+        '''Run a dialog to configure affixes in this language.
+        
+        Return value: True if the affix list changed, otherwise False
+        '''
+        global myGlobalWindow
+        # save a copy of the list to compare later
+        saveAffixes = self.affixes[:]
+        # run the AffixesDialog until it is valid
+        valid = False
+        myGlobalWindow.theAffixesDialog.SetAffixes(self.affixes)
+        while not valid:
+            if myGlobalWindow.theAffixesDialog.Run():
+                # user clicked OK in the Affixes dialog so collect list in textview field
+                text = myGlobalWindow.theAffixesDialog.GetAffixes()
+                text = text.strip()
+                text = text.lower()
+                affixList = re.split(r'\s+', text)
+                # assume we have a valid input
+                valid = True
+                if affixList == [''] or affixList == ['', '']:
+                    # empty list is valid but make it really empty
+                    affixList = []
+                    # save the list
+                    self.affixes = affixList
+                else:
+                    # check each affix in list to make sure it is at least 2 chars, 
+                    # and has '-' at beginning or end (but not both)
+                    for affix in affixList:
+                        if len(affix) < 2 or affix.count('-') != 1 or not (affix.startswith('-') ^ affix.endswith('-')):
+                            # we have an invalid affix: too short, more than one '-', 
+                            # or doesn't start or end with '-' (but not both - XOR)
+                            valid = False
+                            break
+                    # make sure they don't repeat using a set() trick
+                    if len(affixList) != len(set(affixList)):
+                        # the elements in the list are not unique
+                        valid = False
+                    if valid:
+                        # passed validity test, so save the list
+                        self.affixes = affixList
+                    else:
+                        # did not pass validity test, inform the user to correct the data
+                        title = _("Error")
+                        msg = _("All affixes must start or end with '-',\nmust be separated by spaces, and must be unique.\n\nPlease try again.")
+                        SimpleMessage(title, "dialog-error", msg)
+            else:
+                # user clicked cancel, which is valid, but we do nothing
+                valid = True
+        myGlobalWindow.theAffixesDialog.dialog.hide()
+        # return True if the list changed
+        return (self.affixes != saveAffixes)
+    
+    def RunWordBreaksDialog(self):
+        '''Run a dialog which configures word break characters in this language.
+        
+        Return value: True if the character list changed, otherwise False
+        '''
+        global myGlobalWindow
+        # save a copy of the list to compare later
+        saveChars = self.wordBreakChars[:]
+        # run the WordBreaksDialog
+        if myGlobalWindow.theWordBreaksDialog.Run(self.wordBreakChars, self.wordFormChars):
+            # user clicked OK, so get and store data from the listStores
+            # make sure to include the invisible space and invisible non-breaking space
+            self.wordBreakChars = [' ', '\xa0'] + myGlobalWindow.theWordBreaksDialog.GetWordBreakChars()
+            self.wordFormChars = myGlobalWindow.theWordBreaksDialog.GetWordFormChars()
+        # return True if the list changed
+        return (sorted(self.wordBreakChars) != sorted(saveChars))
+    
+    def RunDigraphsDialog(self):
+        '''Run a dialog to configure digraphs in this language.
+        
+        Return value: True if the digraph list changed, otherwise False
+        '''
+        global myGlobalWindow
+        # save a copy of the list to compare later
+        saveDigraphs = self.digraphs[:]
+        # run the DigraphsDialog until it is valid
+        valid = False
+        myGlobalWindow.theDigraphsDialog.SetDigraphs(self.digraphs)
+        while not valid:
+            # run the digraphs dialog
+            if myGlobalWindow.theDigraphsDialog.Run():
+                # user clicked OK in the Digraphs dialog so collect list in textview field
+                text = myGlobalWindow.theDigraphsDialog.GetDigraphs()
+                text = text.strip()
+                text = text.lower()
+                digraphList = re.split(r'\s+', text)
+                # assume we have a valid input
+                valid = True
+                if digraphList == [''] or digraphList == ['', '']:
+                    # empty list is valid but make it really empty
+                    digraphList = []
+                else:
+                    # check each digraph in list to make sure it is at least 2 chars
+                    for digraph in digraphList:
+                        if len(digraph) < 2:
+                            # we have an invalid digraph
+                            valid = False
+                            break
+                    # make sure they don't repeat using a set() trick
+                    if len(digraphList)!=len(set(digraphList)):
+                        # the elements in the list are not unique
+                        valid = False
+                if valid:
+                    # passed validity test, so save the list
+                    self.digraphs = digraphList
+                else:
+                    # did not pass validity test, inform the user to correct the data
+                    title = _("Error")
+                    msg = _("All digraphs must have at least two characters,\nmust be separated by spaces, and must be unique.\n\nPlease try again.")
+                    SimpleMessage(title, 'dialog-error', msg)
+            else:
+                # user clicked cancel, which is valid, but we do nothing
+                valid = True
+        myGlobalWindow.theDigraphsDialog.dialog.hide()
+        
+        # if the list changed, make sure we recalculate the teaching order when we display it
+        if (self.digraphs != saveDigraphs):
+            self.dataChanged = True
+    
+    def RunWordEditDialog(self, widget, row):
+        '''Ask user to edit the affix breaks, show a concordance of the selected word.
+        
+        Parameters: widget, row - for accessing the active row in the TreeView
+        '''
+        global myGlobalRenderer
+        global myGlobalWindow
+        model = widget.get_model()
+        # get the word for this row, both markup and plain (from hidden column) forms
+        markup_word = model[row][0]
+        word = model[row][2]
+        
+        kWordCnt = 0
+        kWordManual = 1
+        kWordExclude = 2
+        kWordAffixForm = 3
+        kWordMarkupForm = 4
+        
+        #  get the word info, which is modifiable (in place)
+        word_info = self.words[word]
+        
+        #  get a concordance of this word
+        concordance = self.GetConcordance(word)
+        
+        zwj = ''
+        if 'Scheherazade' in myGlobalRenderer.fontName or 'Harmattan' in myGlobalRenderer.fontName:
+            # include zero width joiners (ZWJ, U+200D) for these two bad fonts, to approximate joining across markup
+            zwj = '\u200d'
+        
+        
+        valid = False
+        while not valid:
+            # run the word edit dialog
+            if myGlobalWindow.theWordEditDialog.Run(word, word_info[kWordAffixForm], word_info[kWordExclude], concordance):
+                # user clicked OK in the WordEditDialog, assume we have a valid input
+                valid = True
+                # check if we should exclude it
+                if myGlobalWindow.theWordEditDialog.excludeWord.get_active():
+                    # mark word as excluded
+                    word_info[kWordExclude] = True
+                    # make excluded word all gray, and save empty string in specialWordSplits
+                    markup_word = '<span foreground="gray">' + word + '</span>'
+                    word_info[kWordMarkupForm] = markup_word
+                    markup_word = '\u200B' + markup_word
+                    # can't use model[row][0] = markup_word, because TreeModelSort has no attribute set_value
+                    # so we have to go indirectly through the child filterModel, using a converted iter
+                    childFilterModel = model.get_model()
+                    childIter = model.convert_iter_to_child_iter(model.get_iter(row))
+                    childFilterModel[childIter][0] = markup_word
+                    word_info[kWordAffixForm] = word
+                    
+                    # make sure we recalculate the teaching order when we display it
+                    self.dataChanged = True
+                else:
+                    # collect text in entry field
+                    text = myGlobalWindow.theWordEditDialog.divideBuffer.get_text(
+                        myGlobalWindow.theWordEditDialog.divideBuffer.get_start_iter(),
+                        myGlobalWindow.theWordEditDialog.divideBuffer.get_end_iter(), False)
+                    text = text.strip()
+                    text = text.lower()
+                    morphemeList = re.split(r'\s+', text)
+                    if morphemeList == [''] or morphemeList == ['', '']:
+                        # empty list is not valid in this context
+                        valid = False
+                        # inform the user to correct the data
+                        title = _("Error")
+                        msg = _("An empty division of the word is not allowed.\n\nPlease try again.")
+                        SimpleMessage(title, "dialog-error", msg)
+                    else:
+                        # make a rejoined form, without hyphens
+                        rejoined = ''.join(morphemeList).replace('-', '')
+                        ratio = self.LevenshteinRatio(word, rejoined)
+                        if ratio < 0.5:
+                            # the Levenshtein ratio is quite low - really the same word?
+                            title = _("Significant Change")
+                            msg = _("""Your word division '{}' reflects a very different word form
+than the original word '{}'. Are you sure it is correct?""").format(' '.join(morphemeList), word)
+                            if not SimpleYNQuestion(title, 'dialog-warning', msg):
+                                valid = False
+                                continue
+                        # check each morpheme in list to make sure it is valid
+                        # at this point requires all prefixes first, then roots, then suffixes
+                        stage = 'prefix'
+                        numroots = 0
+                        for morpheme in morphemeList:
+                            if stage == 'prefix':
+                                if morpheme.endswith('-'):
+                                    # stay in prefix stage
+                                    if len(morpheme) < 2 or morpheme.count('-') != 1:
+                                        # invalid morpheme: too short, or too many hyphens
+                                        valid = False
+                                        break
+                                else:
+                                    #  move to root stage
+                                    stage = 'root'
+                            if stage == 'root':
+                                if morpheme.startswith('-'):
+                                    #  move to suffix stage
+                                    stage = 'suffix'
+                                else:
+                                    numroots += 1
+                                    if morpheme.endswith('-') or morpheme.count('-') > 1:
+                                        # invalid morpheme: marked as prefix, or too many hyphens
+                                        valid = False
+                                        break
+                            if stage == 'suffix':
+                                if not morpheme.startswith('-') or morpheme.count('-') != 1:
+                                    # invalid morpheme: not marked as suffix, or too many hyphens
+                                    valid = False
+                                    break
+                        
+                        if numroots < 1:
+                            # not enough roots
+                            valid = False
+                        
+                        if valid:
+                            # valid entry built from text field
+                            # word is not excluded
+                            word_info[kWordExclude] = False
+                            # store affix form
+                            affix_word = ' '.join(morphemeList)
+                            word_info[kWordAffixForm] = affix_word
+                            # remember that this is a manually modified form
+                            word_info[kWordManual] = True
+                            # change all affixes in morphemeList into gray <span> forms
+                            # and put <b></b> around roots
+                            markup_word = ''
+                            for m in morphemeList:
+                                if m.endswith('-'):
+                                    markup_word += '<span foreground="gray">' + m.replace('-', '') + '</span>'
+                                elif m.startswith('-'):
+                                    markup_word += '<span foreground="gray">' + m.replace('-', '') + '</span>'
+                                else:
+                                    markup_word += '<b>' + m + '</b>'
+                            # remove </b><b> pairs in the middle (will happen if there are 2+ roots)
+                            markup_word = markup_word.replace('</b><b>', '')
+                            if zwj:
+                                # include zero width joiners (ZWJ, U+200D) at transitions if we are using a bad font
+                                markup_word = re.sub('(</span>|</b>)(<span foreground="gray">|<b>)', '\u200d\\1\\2\u200d', markup_word)
+                            
+                            word_info[kWordMarkupForm] = markup_word
+                            markup_word = '\u200B' + markup_word
+                            # can't use model[row][0] = markup_word, because TreeModelSort has no attribute set_value
+                            # so we have to go indirectly through the child filterModel, using a converted iter
+                            childFilterModel = model.get_model()
+                            childIter = model.convert_iter_to_child_iter(model.get_iter(row))
+                            childFilterModel[childIter][0] = markup_word
+                            
+                            # make sure we recalculate the teaching order when we display it
+                            self.dataChanged = True
+                        else:
+                            # did not pass validity test, inform the user to correct the data
+                            title = _("Invalid entry")
+                            msg = _("""All prefixes must end with '-', all suffixes must begin with '-',
+there must be at least one root without '-', all must be separated by spaces.
+
+Please try again.""")
+                            SimpleMessage(title, "dialog-error", msg)
+            else:
+                # user clicked cancel, which is valid, but we do nothing
+                valid = True
+        myGlobalWindow.theWordEditDialog.dialog.hide()
+    
+    def GetConcordance(self, word):
+        '''Return a string which contains a concordance of the given word in context.
+        Each line of the concordance looks like this:
+           pre-context \t word \t post-context \n
+        
+        Parameter: word (str) - the word to find in the text
+        Return value: (str) - "concordance" of word in context
+        '''
+        # build 'breaks' string with all word breaking characters for RegExp matching
+        breaks = ' '
+        for char in self.wordBreakChars:
+            # need to put '\' before special characters
+            if char in '.^$*+-?{}\\[]|()':
+                breaks = breaks + '\\'
+            breaks = breaks + char
+        
+        concordance = ""
+        for fileNum in range(len(self.fileNames)):
+            for line in self.fileLines[fileNum]:
+                # we split the line, which returns a list of strings with
+                # the word desired (as elements 1,3,...)
+                # and with the surrounding context (as elements 0,2,4,...)
+                wordsFound = re.split("("+word+")", line, 0, re.I)
+                # for i = each odd index in the list (ie. index of each word found)
+                for i in range(1, len(wordsFound), 2):
+                    pretext = "".join(wordsFound[:i])
+                    # skip if the word is not immediately preceded by word break char
+                    if len(pretext)>0 and pretext[-1] not in breaks:
+                        continue
+                    posttext = "".join(wordsFound[i+1:])
+                    # skip if the word is not immediately followed by word break char
+                    if len(posttext)>0 and posttext[0] not in breaks:
+                        continue
+                    # limit the context to 40 characters before/after
+                    if len(pretext)>40: pretext = pretext[-40:]
+                    if len(posttext)>40: posttext = posttext[:40]
+                    # only show full words in the pretext and posttext
+                    m = re.search(r'[\s' + breaks + ']+(.+)', pretext)
+                    if m:
+                        # only keep the text found after the first breaks
+                        pretext = m.group(1)
+                    m = re.search(r'(.+[\s' + breaks + ']+)', posttext)
+                    if m:
+                        # only keep the text up to and including last breaks
+                        posttext = m.group(1)
+                    # store this information as a line in the concordance
+                    concordance += pretext + "\t" + \
+                                   wordsFound[i] + "\t" + \
+                                   posttext + "\n"
+        # return the concordance, but without the final newline
+        return concordance[:-1]
+    
+    def GetPhrases(self, row):
+        '''Return a string which contains a "concordance" of the phrases that are
+        possible by using the words that are available at this row number and
+        higher in the teaching order. Each line of the concordance looks like this:
+           pre-context \t phrase \t post-context \n
+        
+        Parameter: row (int) - include letters/words down to this row number
+                               from the teaching order
+        Return value: (str) - "concordance" of phrases possible with these letters
+        '''
+        # build 'breaks' string with a list of all of the word-breaking
+        # characters for RegExp matching
+        breaks = ''
+        for char in self.wordBreakChars:
+            # need to put '\' before special characters
+            if char in '.^$*+-?{}\\[]|()':
+                breaks = breaks + '\\'
+            breaks = breaks + char
+        
+        # build up a list of all possible words using letters that are
+        # taught down to row #row
+        possibleWords = []
+        for i in range(row+1):
+            letter = self.teachingOrder[i]
+            if isinstance(letter, int):
+                # add sight word list
+                possibleWords.extend(self.sightWords[letter-1])
+            else:
+                # add example word list
+                possibleWords.extend(self.graphemeExampleWords[letter])
+        
+        # build a list of tuples that contain the length of the found string
+        # (because we want to put the longest strings first)
+        phraseList = []
+        for fileNum in range(len(self.fileNames)):
+            for line in self.fileLines[fileNum]:
+                linewords = re.split(r'([\s' + breaks + r']+)', line)
+                i = 0
+                while i < len(linewords):
+                    if linewords[i].lower() in possibleWords:
+                        j = i+2
+                        while j < len(linewords) and \
+                              linewords[j].lower()in possibleWords:
+                            j += 2
+                        if j > i+2:
+                            # we have at least 2 example words together
+                            strt = max(i-6, 0) # try to show 3 words before as context
+                            fnsh = min(j+6, len(linewords)) # and 3 words after
+                            phrase = ''.join(linewords[strt:i]) + "\t"
+                            possiblePhrase = ''.join(linewords[i:j-1])
+                            phrase += possiblePhrase + "\t"
+                            phrase += ''.join(linewords[j-1:fnsh]) + "\n"
+                            # add this phrase to the list, with the length of its possible phrase
+                            phraseList.append( (len(possiblePhrase), phrase) )
+                            # move counter past last example word already matched
+                            i = j
+                    i += 1
+        # combine the phrases, longest possible phrase first
+        phrases = ""
+        for (ln, s) in sorted(phraseList, reverse=True):
+            phrases += s
+        # return the phrases, but without the final newline
+        return phrases[:-1]
+    
+    def LevenshteinRatio(self, s, t):
+        """ Calculates levenshtein distance ratio of similarity between two strings.
+            For all i and j, distance[i,j] will contain the Levenshtein
+            distance between the first i characters of s and the
+            first j characters of t
+        """
+        # Initialize matrix of zeros
+        rows = len(s)+1
+        cols = len(t)+1
+        distance = np.zeros((rows,cols),dtype = int)
+        
+        # Populate matrix of zeros with the indices of each character of both strings
+        for i in range(1, rows):
+            for k in range(1,cols):
+                distance[i][0] = i
+                distance[0][k] = k
+        
+        # Iterate over the matrix to compute the cost of deletions,insertions and/or substitutions    
+        for col in range(1, cols):
+            for row in range(1, rows):
+                if s[row-1] == t[col-1]:
+                    # If the characters are the same in the two strings in a given position [i,j] then the cost is 0
+                    cost = 0
+                else:
+                    # Since we're calculating ratio, the cost of a substitution is 2 (to align with results of the Python Levenshtein package)
+                    cost = 2
+                distance[row][col] = min(distance[row-1][col] + 1,      # Cost of deletions
+                                     distance[row][col-1] + 1,          # Cost of insertions
+                                     distance[row-1][col-1] + cost)     # Cost of substitutions
+        
+        # Computation of the Levenshtein Distance Ratio
+        Ratio = ((len(s)+len(t)) - distance[row][col]) / (len(s)+len(t))
+        return Ratio
+    
+    
+    def __init__(self):
+        '''Initialize this WordAnalysis object.
+        '''
+        # fileNames: list of file names (with path) that have been loaded
+        self.fileNames = []
+        # fileLines: list of lists of lines in the files
+        self.fileLines = []
+        # note that fileLines[n] is a list of lines in fileNames[n]
+        
+        # chars: dictionary of { char: 1 } for all characters used in all texts
+        self.chars = {' ': 1, '\xa0': 1}
+        # lists of characters that are used for word breaking or word forming
+        self.wordBreakChars = [' ', '\xa0']  # must include space and no-break space
+        self.wordFormChars = []
+        # digraphs: list of character combinations that should be considered digraphs
+        self.digraphs = []
+        # affixes: list of affixes, each of which includes '-' at beginning or end, to indicate attach point
+        self.affixes = []
+        # specialWordSplits: dict of { word, string of the word with broken off affixes (overrides use of affix list) }
+        self.specialWordSplits = {}
+        
+        # words: dict of { word, [word count in all texts, manual split?, excluded?, affix form, markup form] }
+        self.words = {}
+        
+        # lessonTexts: dict of { grapheme (str), text of that lesson (str) }
+        #    note: the grapheme can alternately be an integer which is an index into the sight word list
+        self.lessonTexts = {}
+        self.selectedGrapheme = None
+        
+        # default value for auto-search for digraphs
+        self.autoSearchDigraphs = True
+        # default value for treating combining diacritics separately
+        self.separateCombDiacritics = False
+        # define default parameters for dealing with SFM files
+        self.sfmProcessSFMs = False
+        self.sfmIgnoreLines = 'id|rem|restore|h|toc1|toc2|toc3'
+        self.sfmProcessLines = ''
+        
+        self.dataChanged = False
+
+
+
+class GtkBuilder(Gtk.Builder):
+
+    def __init__(self, glade_file, APP_NAME):
+        super().__init__()
+        self.set_translation_domain(APP_NAME)
+        self.add_from_file(glade_file)
+
+        self.tree = ET.parse(glade_file)
+        self.recursive_xml_translate(self.tree.getroot())
+
+    def recursive_xml_translate(self, node):
+        """Custom translation with Glade/Builder does not work when locale is not installed.
+        Reset every label in Glade file using gettext."""
+        def func_not_found(value):
+            logger.warning('could not translate: {}'.format(value))
+        
+        parent_id = node.attrib.get('id')
+
+        for child in node:
+            if len(child):
+                self.recursive_xml_translate(child)
+
+            if not child.attrib.get('translatable') == 'yes':
+                continue
+
+            # translate property value
+            if child.tag == 'property' and parent_id and child.attrib.get('name'):
+                name = child.attrib.get('name')
+                obj = self.get_object(parent_id)
+                func = getattr(obj, 'set_{}'.format(name), func_not_found)
+                translatedString = _(child.text)
+                logger.debug('Translate Glade object ({}): set_{}({})'.format(
+                    parent_id, 
+                    name, 
+                    translatedString
+                ))
+                func(_(translatedString))
+
+
+class Handler:
+    def on_mainWindow_destroy(self, *args):
+        Gtk.main_quit()
+    
+    def on_saveProjectMenuItem_activate(self, *args):
+        global myGlobalWindow
+        myGlobalWindow.SaveProject()
+    
+    def on_loadProjectMenuItem_activate(self, *args):
+        global myGlobalWindow
+        myGlobalWindow.LoadProject()
+    
+    def on_saveTeachingOrderMenuItem_activate(self, *args):
+        '''Process the File > Save Teaching Order menu.'''
+        global myGlobalWindow
+        global myGlobalPath
+        msg = _("Save teaching order as...")
+        chooser = Gtk.FileChooserDialog(msg, myGlobalWindow.window,
+                                        Gtk.FileChooserAction.SAVE,
+                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
+                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser.set_transient_for(myGlobalWindow.window)
+        chooser.set_current_name(_("TeachingOrder.txt"))
+        chooser.set_current_folder(myGlobalPath)
+        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_default_response(Gtk.ResponseType.OK)
+        if chooser.run() == Gtk.ResponseType.OK:
+            filename = chooser.get_filename()
+            filetext = myGlobalWindow.analysis.GetTeachingOrderText()
+            myGlobalWindow.WriteFile(filename, filetext)
+            # save this path for next time we need to write out a file
+            myGlobalPath = os.path.dirname(filename)
+        chooser.destroy()
+    
+    def on_saveWordListMenuItem_activate(self, *args):
+        '''Process the File > Save Teaching Order menu.'''
+        global myGlobalWindow
+        global myGlobalPath
+        msg = _("Save word list as...")
+        chooser = Gtk.FileChooserDialog(msg, myGlobalWindow.window,
+                                        Gtk.FileChooserAction.SAVE,
+                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
+                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser.set_transient_for(myGlobalWindow.window)
+        chooser.set_current_name(_("WordList.txt"))
+        chooser.set_current_folder(myGlobalPath)
+        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_default_response(Gtk.ResponseType.OK)
+        if chooser.run() == Gtk.ResponseType.OK:
+            filename = chooser.get_filename()
+            filetext = ''
+            kWordCnt = 0
+            kWordManual = 1
+            kWordExclude = 2
+            kWordAffixForm = 3
+            kWordMarkupForm = 4
+            
+            for word in sorted(myGlobalWindow.analysis.words, key=myGlobalWindow.analysis.words.get, reverse=True):
+                word_info = myGlobalWindow.analysis.words[word]
+                if len(myGlobalWindow.analysis.affixes) == 0:
+                    # no affixes, just print out word and count
+                    filetext = filetext + word + '\t' + str(word_info[kWordCnt]) + '\n'
+                else:
+                    #  print out word, count, and affix form
+                    filetext = filetext + word + '\t' + str(word_info[kWordCnt]) + '\t' + word_info[kWordAffixForm] + '\n'
+            myGlobalWindow.WriteFile(filename, filetext)
+            # save this path for next time we need to write out a file
+            myGlobalPath = os.path.dirname(filename)
+        chooser.destroy()
+    
+    def on_autoSearchDigraphsMenuItem_toggled(self, widget, data=None):
+        # menu processing has already toggled checkmark, we just load in its value
+        myGlobalWindow.analysis.autoSearchDigraphs = widget.get_active()
+        # update config object and save
+        myGlobalConfig['Option']['digraphautosearch'] = '1' if widget.get_active() else '0'
+        SaveConfig()
+    
+    def on_selectFontMenuItem_activate(self, *args):
+        '''Process the Configure > Select the Text Font menu, to choose display font.'''
+        global myGlobalWindow
+        global myGlobalRenderer
+        
+        if myGlobalRenderer.SelectFont():
+            myGlobalWindow.ApplyFonts()
+    
+    def on_interfaceMenuItem_activate(self, lang, idx):
+        global myGlobalWindow
+        global _
+        settings = myGlobalWindow.window.get_settings()
+        fontname = translation_languages[idx][2]
+        if len(fontname) == 0:
+            fontname = 'Sans 10'
+        settings.set_property('gtk-font-name', fontname)
+        if translation_languages[idx][3] == 'RTL':
+            myGlobalWindow.window.set_default_direction(Gtk.TextDirection.RTL)
+            myGlobalWindow.isRTL = True
+            #myGlobalBuilder.get_object('teachingOrderScrolledWindow').get_hadjustment().set_value(100)
+        else:
+            myGlobalWindow.window.set_default_direction(Gtk.TextDirection.LTR)
+            myGlobalWindow.isRTL = False
+            #myGlobalBuilder.get_object('teachingOrderScrolledWindow').get_hadjustment().set_value(0)
+        _ = translation_languages[idx][4].gettext
+        myGlobalBuilder.recursive_xml_translate(myGlobalBuilder.tree.getroot())
+        myGlobalWindow.ShowSummaryStatusBar()
+        
+        # update config object and save
+        myGlobalConfig['Option']['lang'] = lang
+        SaveConfig()
+    
+    def on_helpMenuItem_activate(self, *args):
+        '''Process the Help > PrimerPrep Help menu. Display help web page.'''
+        filename = os.path.join(myGlobalProgramPath, 'Help', _("PrimerPrepHelp.htm"))
+        if not os.path.exists(filename):
+            title = _("Warning")
+            msg = _("The help file was not found.")
+            SimpleMessage(title, "dialog-warning", msg)
+        else:
+            webbrowser.open("file:///" + filename)
+    
+    def on_aboutMenuItem_activate(self, *args):
+        '''Process the Help > About menu. Display information about the program.'''
+        title = _("About")
+        msg = "PrimerPrep version " + progVersion
+        msg += "\n" + _("Developed by Jeff Heath, SIL Chad") + "\n\n"
+        msg += "© " + progYear + " SIL International\n\n"
+        msg += _("""This is a tool that helps in preparing a primer.
+The program loads language texts, counts words
+and letters, and suggests a teaching order for
+introducing the letters in a primer.""")
+        SimpleMessage(title, "dialog-information", msg)
+    
+    def on_addTextsButton_clicked(self, button):
+        '''Using a FileChooserDialog, allow user to select and open file(s) for analysis.'''
+        # run the open file dialog, and handle loading any file(s) chosen
+        myGlobalWindow.AddTexts()
+    
+    def on_clearAllTextsButton_clicked(self, button):
+        '''Process a Clear All Texts button click. Since this was requested by
+        the user, we want to really start from scratch, including all configuration
+        information. The easiest way to do this is to just delete the WordAnalysis
+        object instance and create a new one.'''
+        global myGlobalBuilder
+        global myGlobalWindow
+        
+        # get rid of the old WordAnalysis object
+        del myGlobalWindow.analysis
+        # create a new instance of WordAnalysis to store our data
+        myGlobalWindow.analysis = WordAnalysis()
+        # we need to set the value of autoSearchDigraphs properly from menu
+        myGlobalWindow.analysis.autoSearchDigraphs = myGlobalBuilder.get_object('autoSearchDigraphsMenuItem').get_active()
+        # we need to set the value of separateCombDiacritics properly from check button
+        myGlobalWindow.analysis.separateCombDiacritics = myGlobalBuilder.get_object('separateDiacriticsCheckButton').get_active()
+        # the affix list has been cleared, so make sure it is cleared in the interface
+        myGlobalWindow.UpdateAffixList()
+        
+        # prevent the non-existant teaching order from being saved
+        menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+        menu.set_sensitive(False)
+        
+        # clear out list stores and update status bar
+        fileList = myGlobalBuilder.get_object("fileListStore")
+        fileList.clear()
+        myGlobalWindow.filterTextEntry.set_text('')
+        myGlobalWindow.wordListStore.clear()
+        # clear the text, so we don't try to mark untaught residue
+        text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
+        text.set_text("")
+        myGlobalWindow.teachingOrderListStore.clear()
+        myGlobalWindow.ShowSummaryStatusBar()
+    
+    def on_showFullPathCheckButton_toggled(self, *args):
+        global myGlobalBuilder
+        fileListStore = myGlobalBuilder.get_object('fileListStore')
+        fileListStore.clear()
+        for filename in myGlobalWindow.analysis.fileNames:
+            if myGlobalBuilder.get_object('showFullPathCheckButton').get_active():
+                name = filename
+            else:
+                name = filename.split('\\')[-1]
+            fileListStore.append([name])
+    
+    def on_affixesRadioButton_toggled(self, *args):
+        global myGlobalWindow
+        # make sure we recalculate the teaching order next time we display it
+        myGlobalWindow.analysis.dataChanged = True
+        # update config object and save
+        myGlobalConfig['Option']['excludeaffixes'] = '1' if myGlobalBuilder.get_object('affixesExcludedRadioButton').get_active() else '0'
+        SaveConfig()
+    
+    def on_editAffixesButton_clicked(self, button):
+        '''Allow the user to define prefixes and suffixes that should be broken off in words.'''
+        global myGlobalWindow
+        # just pass this job to the analysis object
+        if myGlobalWindow.analysis.RunAffixesDialog():
+            # returned True, so the affix list changed - recalculate data
+            title = _("Reprocessing texts")
+            msg = _("The list of affixes changed, so all of the\ntext data is being reprocessed.")
+            SimpleMessage(title, "dialog-warning", msg)
+            
+            myGlobalWindow.UpdateAffixList()
+            myGlobalWindow.analysis.ProcessAffixes()
+            myGlobalWindow.analysis.UpdateWordList(myGlobalWindow.wordListStore)
+    
+    def on_countWordRadioButton_toggled(self, *args):
+        global myGlobalWindow
+        # make sure we recalculate the teaching order next time we display it
+        myGlobalWindow.analysis.dataChanged = True
+        # update config object and save
+        myGlobalConfig['Option']['countallwords'] = '1' if myGlobalBuilder.get_object('countWordEachTimeRadioButton').get_active() else '0'
+        SaveConfig()
+        
+    def on_wordBreakingCharsButton_clicked(self, button):
+        global myGlobalWindow
+        # just pass this job to the analysis object
+        if myGlobalWindow.analysis.RunWordBreaksDialog():
+            # returned True, so word break char list changed - reprocess all texts
+            title = _("Reprocessing texts")
+            msg = _("The list of word-breaking characters changed, so all\nof the text data is being reprocessed.")
+            if myGlobalWindow.analysis.autoSearchDigraphs:
+                msg += "\n\n" + \
+                       _("""NOTE that since the 'Auto-Search for Digraphs' option is
+selected, this process may find and add new digraphs to
+your digraph list. You may want to select 'Configure Digraphs'
+in the Configure menu after this process is finished to
+verify that all of your digraphs are correct.""")
+            SimpleMessage(title, "dialog-warning", msg)
+            # ask the WordAnalysis object to reprocess all texts again
+            myGlobalWindow.analysis.ReprocessTexts()
+            # display the updated results
+            myGlobalWindow.analysis.UpdateWordList(myGlobalWindow.wordListStore)
+            myGlobalWindow.ShowSummaryStatusBar()
+    
+    def on_digraphsButton_clicked(self, button):
+        '''Allow the user to define digraphs that should be identified in the language.'''
+        global myGlobalWindow
+        # just pass this job to the analysis object, will set dataChanged, if appropriate
+        myGlobalWindow.analysis.RunDigraphsDialog()
+    
+    def on_separateDiacriticsCheckButton_toggled(self, widget, data=None):
+        global myGlobalWindow
+        global myGlobalConfig
+        # menu processing has already toggled checkmark, we just load in its value
+        myGlobalWindow.analysis.separateCombDiacritics = widget.get_active()
+        # update config object and save
+        myGlobalConfig['Option']['separatecombdia'] = '1' if widget.get_active() else '0'
+        SaveConfig()
+        
+        # make sure that we recalculate the teaching order
+        myGlobalWindow.analysis.dataChanged = True
+        
+        # rebuild the character lists, since they could be different now
+        myGlobalWindow.analysis.chars = {' ': 1, '\xa0': 1}
+        myGlobalWindow.analysis.wordBreakChars = [' ', '\xa0']  # must include space and no-break space
+        myGlobalWindow.analysis.wordFormChars = []
+        for lines in myGlobalWindow.analysis.fileLines:
+            myGlobalWindow.analysis.FindChars(lines)
+    
+    def on_filterTextEntry_changed(self, widget):
+        wordListTreeModelFilter = myGlobalBuilder.get_object("wordListTreeModelFilter")
+        wordListTreeModelFilter.refilter()
+        myGlobalWindow.ShowSummaryStatusBar()
+
+    def on_wordListTreeView_row_activated(self, widget, row, col):
+        # just pass this job to the analysis object, will set dataChanged, if appropriate
+        myGlobalWindow.analysis.RunWordEditDialog(widget, row)
+    
+    def on_addSightWordsButton_clicked(self, button):
+        '''Add a line for sight words in the teaching order, entered by user.'''
+        global myGlobalWindow
+        if len(myGlobalWindow.teachingOrderListStore) == 0:
+            # no teaching order, just exit quietly
+            return
+        (model, row) = myGlobalWindow.teachingOrderTreeView.get_selection().get_selected()
+        if row is None:
+            # no line selected, just exit quietly
+            return
+        # just pass the job of collecting the sight word list to the analysis object
+        sightWordList = myGlobalWindow.analysis.RunSightWordsDialog([])
+        if sightWordList is not None and len(sightWordList) > 0:
+            # there are sight words to add, start at selected row
+            # get path and index of selected row
+            path = model.get_path(row)
+            idx = path.get_indices()[0]
+            swIdx = myGlobalWindow.analysis.InsertSightWordsInTeachingOrder(idx, sightWordList)
+            # add the sight word lesson in the ListStore
+            myGlobalWindow.teachingOrderListStore.insert(idx, ['\u2686\u2686', '', '  '.join(sightWordList), swIdx])
+            # select equivalent row in teaching order
+            myGlobalWindow.teachingOrderTreeView.get_selection().select_path(path)
+    
+    def on_removeSightWordsButton_clicked(self, button):
+        '''Remove a line of sight words from the teaching order.'''
+        global myGlobalWindow
+        # find the selected row (the sight word lesson to remove)
+        (model, row) = myGlobalWindow.teachingOrderTreeView.get_selection().get_selected()
+        if row is not None:
+            # get the sight word index, tucked away in the hidden column
+            swIdx = myGlobalWindow.teachingOrderListStore.get_value(row, 3)
+            if swIdx > 0:
+                # this is a sight word lesson, so remove it
+                # get path and index of selected row
+                path = model.get_path(row)
+                idx = path.get_indices()[0]
+                if swIdx != myGlobalWindow.analysis.RemoveSightWordsFromTeachingOrder(idx):
+                    logger.error("Non-matching swIdx in on_removeSightWordsButton_clicked")
+                # invalidate the selected grapheme, to make sure that any existing lesson text doesn't get re-saved somewhere
+                # (the following ListStore.remove causes the on_Lesson_select routine to be called)
+                myGlobalWindow.analysis.selectedGrapheme = None
+                # remove the sight word lesson from the ListStore
+                myGlobalWindow.teachingOrderListStore.remove(row)
+                # adjust the fourth (hidden) column for sight word indices greater than the one deleted
+                for rw in myGlobalWindow.teachingOrderListStore:
+                    if rw[3] > swIdx:
+                        rw[3] -= 1
+            else:
+                logger.error("Tried to remove a sight word lesson that was not a sight word lesson")
+    
+    def on_teachingOrderTreeView_row_activated(self, widget, row, col):
+        # double-click on a row, just pass this job to the analysis object
+        # will display concordance for a letter, edit a sight word lesson
+        myGlobalWindow.analysis.TeachingOrderDoubleClick(widget, row)
+    
+    def on_teachingOrderTreeView_drag_begin(self, treeview, drag_context):
+        treeselection = treeview.get_selection()
+        model, iter = treeselection.get_selected()
+        myGlobalWindow.letterDragged = model.get_value(iter, 0)
+        
+    def on_teachingOrderTreeView_drag_end(self, treeview, context):
+        '''Process the drag-and-drop which just ended. The teaching order has
+        changed, so we need to store the new teaching order and recalculate
+        the example words that are possible with this new order.
+        
+        Parameters: treeview (unused)
+                    context (unused)
+        '''
+        myGlobalWindow.analysis.TeachingOrderModified(myGlobalWindow.teachingOrderListStore)
+        myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
+        
+        # find letter and select that row in the new teaching order
+        for row in myGlobalWindow.teachingOrderListStore:
+            if row[0] == myGlobalWindow.letterDragged:
+                # any one of these 3 methods works, but shifts selection to top of TreeView
+                #treeview.set_cursor(row.path)
+                #myGlobalWindow.teachingOrderTreeView.get_selection().select_path(row.path)
+                #myGlobalWindow.teachingOrderTreeView.get_selection().select_iter(row.iter)
+                break
+    
+    def on_teachingOrderTreeView_change(self):
+        '''User changed the lesson that is selected, so enable/disable the Remove Sight Words button.
+        Keep lesson text selection in sync.'''
+        sel = myGlobalWindow.teachingOrderTreeView.get_selection()
+        (model, row) = sel.get_selected()
+        if row is not None:
+            letter = model[row][0]
+            if letter == "\u2686\u2686":
+                # sight word lesson, enable the remove button
+                myGlobalWindow.removeSightWordsButton.set_sensitive(True)
+            else:
+                # regular lesson, disable the remove sight word button
+                myGlobalWindow.removeSightWordsButton.set_sensitive(False)
+            
+            # select equivalent row in lesson texts
+            myGlobalWindow.lessonTextsTreeView.get_selection().select_path(model.get_path(row))
+            myGlobalWindow.lessonTextsTreeView.set_cursor(model.get_path(row))
+    
+    def on_lessonTextsTreeView_change(self):
+        '''User changed the lesson that is selected, so update the text displayed.
+        Keep teaching order selection in sync.'''
+        sel = myGlobalWindow.lessonTextsTreeView.get_selection()
+        (model, row) = sel.get_selected()
+        if row is not None:
+            myGlobalWindow.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
+            
+            # get grapheme for this row
+            letter = model[row][0]
+            # get path of selected row
+            path = model.get_path(row)
+            if letter == "\u2686\u2686":
+                # this is a sight word lesson, update the selectedGrapheme to the sight word index
+                # get index of selected row
+                i = path.get_indices()[0]
+                letter = myGlobalWindow.analysis.teachingOrder[i]
+            myGlobalWindow.analysis.selectedGrapheme = letter
+            
+            # select equivalent row in teaching order
+            myGlobalWindow.teachingOrderTreeView.get_selection().select_path(path)
+            myGlobalWindow.teachingOrderTreeView.set_cursor(model.get_path(row))
+            
+            # update the text field on the Lesson Text tab
+            txt = myGlobalWindow.analysis.lessonTexts.get(myGlobalWindow.analysis.selectedGrapheme, "")
+            myGlobalWindow.lessonTextsTextBuffer.set_text(txt)
+        
+        # try to grab the focus int he TextView (but this doesn't seem to work...)
+        myGlobalWindow.lessonTextsTextView.grab_focus()
+        # make sure cursor is at the end of any existing text
+        myGlobalWindow.lessonTextsTextBuffer.place_cursor(myGlobalWindow.lessonTextsTextBuffer.get_end_iter())
+    
+    def on_lessonTextsTextBuffer_changed(self, widget, data=None):
+        myGlobalWindow.MarkUntaught(widget)
+    
+    def on_notebook_switch_page(self, notebook, tab, index):
+        '''User has moved to a different tab (page) in the notebook interface.
+        
+        Parameters: index - index of the newly selected tab
+        '''
+        global myGlobalNotebookPage
+        global myGlobalWindow
+        global myGlobalBuilder
+        if index != myGlobalNotebookPage:
+            # there has actually been a change in page, so process it
+            if index == 2:
+                # transitioning to the Lesson Texts tab, make sure that the text tagging is up-to-date
+                textBuffer = myGlobalWindow.lessonTextsTextBuffer
+                textBuffer.emit("changed")
+            if myGlobalNotebookPage == 0 and index >= 1:
+                # moving from word discovery to a page where we need to display the teaching order
+                if myGlobalWindow.analysis.dataChanged:
+                    # if data has changed, calculate a new teaching order
+                    myGlobalWindow.analysis.CalculateTeachingOrder(myGlobalWindow.affixesExcluded.get_active(),
+                                                                   myGlobalWindow.countEachWord.get_active())
+                    myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
+                    # reset the selection of the Teaching Order to the beginning of the lists
+                    treeview = myGlobalWindow.teachingOrderTreeView
+                    treeview.get_selection().select_path(Gtk.TreePath("0"))
+                    treeview = myGlobalWindow.lessonTextsTreeView
+                    treeview.get_selection().select_path(Gtk.TreePath("0"))
+                    # allow the teaching order to be saved
+                    menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+                    menu.set_sensitive(True)
+            elif myGlobalNotebookPage >= 1 and index == 0:
+                # moving from a teaching order page back to word discovery, give warning that changes could cause loss of some information
+                title = _("Warning")
+                msg = _("""If you make changes on this Word Discovery page, you may lose
+some changes in your Teaching Order, specifically your sight word
+lessons and the current teaching order.""")
+                SimpleMessage(title, 'dialog-warning', msg)
+            # remember which page we are on now
+            myGlobalNotebookPage = index
+
+
+
+class PrimerPrepWindow:
+    '''PrimerPrepWindow class - main class used to run the PrimerPrep program
+    
+    Creating an instance of this class creates the main PrimerPrep window, and
+    calling the method .main() allows it to process all of the menu requests.
+    
+    Attributes:
+      window - Gtk.Window object, main PrimerPrep window
+      analysis - WordAnalysis object, calculates and stores word statistics
+      wordListStore - ListStore object, holds word list
+      wordTreeView - TreeView object, displays word list
+      teachingOrderListStore - ListStore object, holds teaching order
+      teachingOrderTreeView - TreeView object, displays teaching order
+      lessonTextsTreeView - TreeView object, displays teaching order for the Lesson Texts tab
+    '''
+    
+    def ConfirmFileWrite(self, filename):
+        # there seems to be a problem with set_do_overwrite_confirmation in the FileChooserDialog
+        # so do the confirmation manually
+        global myGlobalInterface
+        if not os.path.exists(filename):
+            return True
+        # this file already exists, so confirm overwriting it
+        title = _("Confirm overwrite")
+        msg = _("That file already exists. Overwrite it?")
+        if SimpleYNQuestion(title, 'dialog-warning', msg):
+            return True
+        return False
+    
+    def WriteFile(self, filename, filetext):
+        '''Internal class routine for writing the given text to the given file.
+        It gracefully handles a pre-existing file and an error writing the file.
+        
+        Parameters: filename (str) - full file name/path
+                    filetext (str) - multiline string of contents of file to write
+        '''
+        global myGlobalInterface
+        if self.ConfirmFileWrite(filename):
+            #logger.debug('Saving as:', filename)
+            try:
+                save_file = open(filename, 'w', encoding='utf-8')
+                # write a byte-order mark (BOM) for better file identification
+                save_file.write('\ufeff')
+                save_file.write(filetext)
+                save_file.close()
+            except Exception:
+                title = _("Error")
+                msg = _("Error. File could not be written.")
+                SimpleMessage(title, 'dialog-error', msg)
+    
+    def SaveProject(self):
+        '''Save the project configuration, allowing restoring and continuing work later.
+        Using a FileChooserDialog, the user specifies the file name and location, and
+        all data structures are stored (using pickle), so they can be restored later.
+        
+        Parameters: widget (unused)
+                    data (unused)
+        '''
+        global myGlobalPath
+        global myGlobalRenderer
+        
+        msg = _("Save project as...")
+        chooser = Gtk.FileChooserDialog(msg, self.window,
+                                        Gtk.FileChooserAction.SAVE,
+                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
+                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser.set_current_name(_("project.ppdata"))
+        chooser.set_current_folder(myGlobalPath)
+        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_default_response(Gtk.ResponseType.OK)
+        filter = Gtk.FileFilter()
+        filter.set_name(_("PrimerPrep project files"))
+        filter.add_pattern("*.ppdata")
+        chooser.add_filter(filter)
+        
+        if chooser.run() == Gtk.ResponseType.OK:
+            filename = chooser.get_filename()
+            if not filename.endswith(".ppdata"):
+                # invalid file name - it must have a .ppdata extenstion at the end
+                title = _("Error")
+                msg = _("You must use a file name extension of .ppdata for your project.")
+                SimpleMessage(title, "dialog-error", msg)
+                chooser.destroy()
+                return
+            if self.ConfirmFileWrite(filename):
+                # save all of the important data structures to the file, serializing them with pickle
+                with open(filename, 'wb') as f:
+                    # make sure current lesson text is saved
+                    self.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
+                    self.analysis.selectedGrapheme = None
+                    
+                    # save all of the data into this project backup file
+                    pickle.dump(dataModelVersion, f)
+                    pickle.dump(self.analysis, f)
+                    options = (myGlobalRenderer.fontName, self.affixesExcluded.get_active(),
+                               self.countEachWord.get_active())
+                    pickle.dump(options, f)
+            # save this path for next time we need to write out a file
+            myGlobalPath = os.path.dirname(filename)
+        chooser.destroy()
+    
+    def LoadProject(self):
+        '''Load the project details from a previously saved file. Using a FileChooserDialog,
+        the user locates and selects the project file to be loaded. All data structures are
+        restored (using pickle).
+        
+        Parameters: widget (unused)
+                    data (unused)
+        '''
+        global myGlobalRenderer
+        
+        msg = _("Choose project to load...")
+        chooser = Gtk.FileChooserDialog(msg, self.window,
+                                        Gtk.FileChooserAction.OPEN,
+                                        (Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
+        chooser.set_default_response(Gtk.ResponseType.CANCEL)
+        chooser.set_select_multiple(False)
+        
+        filter = Gtk.FileFilter()
+        filter.set_name(_("PrimerPrep project files"))
+        filter.add_pattern("*.ppdata")
+        chooser.add_filter(filter)
+        
+        if chooser.run() == Gtk.ResponseType.OK:
+            filename = chooser.get_filename()
+            if filename:
+                #logger.debug("Loading: {}".format(filename))
+                with open(filename, 'rb') as f:
+                    vernum = pickle.load(f)
+                    if not isinstance(vernum, int) or vernum != dataModelVersion:
+                        # invalid project file
+                        title = _("Error")
+                        msg = _("Incompatible project file.")
+                        SimpleMessage(title, "dialog-error", msg)
+                    else:
+                        del self.analysis
+                        self.analysis = pickle.load(f)
+                        
+                        # load and unpack the options tuple, and set the options
+                        options = pickle.load(f)
+                        myGlobalRenderer.fontName = options[0]
+                        self.affixesExcluded.set_active(options[1])
+                        self.countEachWord.set_active(options[2])
+                        sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
+                        sepDiacr.set_active(self.analysis.separateCombDiacritics)
+                        
+                        # once the analysis data is loaded, update all of the ListStores
+                        self.analysis.UpdateFileList(self.fileListStore,
+                                                               myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
+                        self.analysis.UpdateWordList(self.wordListStore)
+                        self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
+                        self.UpdateAffixList()
+                        # make sure the vernacular font loaded is being used
+                        self.affixList.modify_font(myGlobalRenderer.vernFontDesc)
+                        self.lessonTextsTextView.modify_font(myGlobalRenderer.vernFontDesc)
+                        self.ShowSummaryStatusBar()
+                        # make sure we don't wipe out the data we just loaded
+                        self.analysis.dataChanged = False
+        chooser.destroy()
+    
+    def AddTexts(self):
+        '''Process an Add Text(s) button click. Using a FileChooserDialog, the
+        user locates and selects the file(s) to be loaded into the analysis.
+        Note that multiple files (in the same directory) can be selected, and
+        each file selected will be loaded into the analysis.
+        
+        Parameters: widget (unused)
+                    data (unused)
+        '''
+        msg = _("Choose text(s) to open...")
+        chooser = Gtk.FileChooserDialog(msg, self.window,
+                                        Gtk.FileChooserAction.OPEN,
+                                        (Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
+        chooser.set_default_response(Gtk.ResponseType.CANCEL)
+        chooser.set_select_multiple(True)
+        
+        # set up file filters for the chooser
+        filter = Gtk.FileFilter()
+        filter.set_name(_("Text files"))
+        filter.add_pattern("*.txt")
+        filter.add_pattern("*.sfm")
+        chooser.add_filter(filter)
+
+        filter = Gtk.FileFilter()
+        filter.set_name(_("All files"))
+        filter.add_pattern("*")
+        chooser.add_filter(filter)
+        
+        if chooser.run() == Gtk.ResponseType.OK:
+            filenames = chooser.get_filenames()
+            fileLoaded = False
+            for filename in filenames:
+                #logger.debug('Loading:', filename.encode('utf-8'))
+                if self.analysis.AddWordsFromFile(filename):
+                    # loaded successfully
+                    fileLoaded = True
+                    if myGlobalBuilder.get_object('showFullPathCheckButton').get_active():
+                        name = filename
+                    else:
+                        name = filename.split('\\')[-1]
+                    myGlobalBuilder.get_object('fileListStore').append([name])
+            if fileLoaded:
+                # at least one loaded, update data on screen
+                self.analysis.UpdateWordList(self.wordListStore)
+                self.ShowSummaryStatusBar()
+        chooser.destroy()
+    
+    def MarkUntaught(self, widget):
+        '''The lesson text changed. Tag untaught words/letters with 'self.untaughtTag'.
+        This involves checking individual words for sight words, and individual letters.
+        
+        Parameters: widget - TextBuffer
+        TODO: If a lesson has a character that doesn't appear at all in the loaded texts,
+        it is treated as untaught residue. Is that correct?
+        '''
+        # find out which lesson is selected, to know what letters/sight words have been taught
+        sel = self.teachingOrderTreeView.get_selection()
+        (model, row) = sel.get_selected()
+        if row is None or not hasattr(self.analysis, 'teachingOrder'):
+            # there is no row selected, or there is no teachingOrder,
+            # so whatever is there is untaught residue
+            # this probably only happens when there is an empty teaching order...
+            widget.apply_tag(self.untaughtTag, widget.get_start_iter(), widget.get_end_iter())
+            return
+        
+        # get path and index of selected row
+        path = model.get_path(row)
+        idx = path.get_indices()[0]
+        
+        # get a list of the graphemes taught and the sight words
+        graphemes = []
+        sightWords = []
+        for i in range(idx+1):
+            letter = self.analysis.teachingOrder[i]
+            if isinstance(letter, int):
+                # actually a placeholder for sightwords, so add them (in lower case) to the list
+                sightWords.extend( [ sw.lower() for sw in self.analysis.sightWords[letter-1] ] )
+            else:
+                graphemes.append(letter)
+        
+        # remove the hyphens from affix sight words, as that leads to better marking of untaught residue
+        for i, sw in enumerate(sightWords):
+            if sw.startswith('-'):
+                sightWords[i] = sw[1:]
+            if sw.endswith('-'):
+                sightWords[i] = sw[:-1]
+        # just in case there was a lone hyphen by itself...
+        while '' in sightWords:
+            sightWords.remove('')
+        
+        # combine the graphemes for making RegEx's to find sequences of graphemes and untaught residue, or signt words
+        graphemeSearch = '|'.join(graphemes)
+        #allGraphemeSearch = '|'.join(graphemes + untaughtGraphemes)
+        wordBreaks = '|'.join(self.analysis.wordBreakChars)
+        
+        # build 'wordBreaks' string with all word breaking characters for RegExp splitting
+        wordBreaks = ''
+        for char in self.analysis.wordBreakChars:
+            # need to put '\' before special characters
+            if char in '.^$*+-?{}\\[]|()':
+                wordBreaks = wordBreaks + '\\'
+            wordBreaks = wordBreaks + char
+        # add line breaks as well, since they don't seem to be in the wordBreakChars list
+        wordBreaks += '\n\r'
+        
+        # RegEx's don't need ^ at the start because we use re.match, which only matches at the beginning of the string
+        # find all graphemesTaught and word break characters - all will be marked as taught
+        graphemesTaught = re.compile('(' + graphemeSearch + ')+')
+        # always run graphemesUntaught after graphemesTaught, so the first character is not a taught character
+        # find any characters (but as few as possible) that occur before a graphemeTaught, a word break, or end of the string
+        graphemesUntaught = re.compile('.+?(?=(' + graphemeSearch + '|[' + wordBreaks + ']|$))')
+        
+        # find word breaks
+        findWordBreaks = re.compile('[' + wordBreaks + ']+')
+        # find sight words, but must be followed by a letter that won't be taught (word break or end of string)
+        if len(sightWords) > 0:
+            findSightWord = re.compile('(' + '|'.join(sightWords) + ')([' + wordBreaks + ']|$)+')
+        else:
+            # this is a RegEx that will never match, since we don't have any sight words to find
+            findSightWord = re.compile('(?!)')
+        
+        start_iter = widget.get_start_iter()
+        text = widget.get_text(start_iter, widget.get_end_iter(), False).lower()
+        end_iter = start_iter.copy()
+        while len(text) > 0:
+            # advance over word break characters, before any other checks
+            m = findWordBreaks.match(text)
+            if m:
+                numChars = len(m.group(0))
+                if numChars > 0:
+                    end_iter.forward_chars(numChars)
+                    widget.remove_tag(self.untaughtTag, start_iter, end_iter)
+                    start_iter = end_iter.copy()
+                    # remove graphemes dealt with already
+                    text = text[numChars:]
+            # check to see if there is a sight word
+            m = findSightWord.match(text)
+            if m:
+                # the RegEx matches all following words breaks as well (which are also not marked untaught)
+                numChars = len(m.group(0))
+                if numChars > 0:
+                    end_iter.forward_chars(numChars)
+                    widget.remove_tag(self.untaughtTag, start_iter, end_iter)
+                    start_iter = end_iter.copy()
+                    # remove graphemes dealt with already
+                    text = text[numChars:]
+            else:
+                # whenever we hit word break characters, we have to loop around to check sight words again
+                while len(text) > 0 and text[0] not in wordBreaks:
+                    # check to see if there are graphemes that have been taught
+                    m = graphemesTaught.match(text)
+                    if m:
+                        numChars = len(m.group(0))
+                        if numChars > 0:
+                            end_iter.forward_chars(numChars)
+                            widget.remove_tag(self.untaughtTag, start_iter, end_iter)
+                            start_iter = end_iter.copy()
+                            # remove graphemes dealt with already
+                            text = text[numChars:]
+                    else:
+                        # see if there are any untaught graphemes
+                        m = graphemesUntaught.match(text)
+                        if m:
+                            numChars = len(m.group(0))
+                            if numChars > 0:
+                                end_iter.forward_chars(numChars)
+                                widget.apply_tag(self.untaughtTag, start_iter, end_iter)
+                                start_iter = end_iter.copy()
+                                # remove graphemes dealt with already
+                                text = text[numChars:]
+    
+    def SaveLessonText(self, grapheme):
+        # save out the current text into the entry for the previously selected grapheme
+        if self.analysis.selectedGrapheme is not None:
+            s = self.lessonTextsTextBuffer.get_start_iter()
+            e = self.lessonTextsTextBuffer.get_end_iter()
+            self.analysis.lessonTexts[grapheme] = self.lessonTextsTextBuffer.get_text(s, e, False)
+    
+    def UpdateAffixList(self):
+        # update the affix list field with these new affixes
+        global myGlobalBuilder
+        
+        if len(self.analysis.affixes) > 0:
+            # there are some affixes, so display them
+            affixes = ' '.join(self.analysis.affixes)
+            # affixes.replace('-', '\u2013')
+            # break the lines only on spaces (auto-breaking sometimes puts suffix hyphen at end of row)
+            affixes = re.sub('(.{30,40}) ', '\\1\n', affixes)
+        else:
+            affixes = _("<i>empty</i>")
+        self.affixList.set_markup(affixes)
+    
+    def ApplyFonts(self):
+        global myGlobalRenderer
+        self.affixList.modify_font(myGlobalRenderer.vernFontDesc)
+        # process affixes again, in case we switched between fonts that need/don't need ZWJ
+        self.analysis.ProcessAffixes()
+        self.analysis.UpdateWordList(self.wordListStore)
+        self.filterTextEntry.modify_font(myGlobalRenderer.vernFontDesc)
+        self.wordListWordCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        self.wordListFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
+        self.teachingOrderLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        self.teachingOrderFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
+        self.teachingOrderExamplesCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        self.lessonTextsLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        self.lessonTextsFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
+        self.lessonTextsTextView.modify_font(myGlobalRenderer.vernFontDesc)
+        # need to do this additional step to make sure that resized fonts are handled appropriately
+        self.wordListTreeView.get_column(0).queue_resize()
+        self.teachingOrderTreeView.get_column(0).queue_resize()
+        self.lessonTextsTreeView.get_column(0).queue_resize()
+        
+    def VisibleItem(self, model, row, data=None):
+        # get the filter text from the filter Entry field
+        filterText = self.filterTextEntry.get_text().lower()
+        
+        # an empty filter matches everything
+        if filterText == "":
+            return True
+        
+        # get the word to check if it's visible
+        word = model.get_value(row, 0).lower()
+        # remove all of the formatting
+        word = word.replace('<b>', '')
+        word = word.replace('</b>', '')
+        word = word.replace('<span foreground="gray">', '')
+        word = word.replace('</span>', '')
+        # see if the filter text is in this word of the word list
+        return filterText in word
+    
+    def WordListCompareWord(self, model, row1, row2, user_data):
+        # have to use get_model to get from TreeModelFilter down to ListStore
+        #sort_column, _ = model.get_model().get_sort_column_id()
+        value1 = model.get_value(row1, 0)
+        value2 = model.get_value(row2, 0)
+        value1 = value1.replace('<b>', '')
+        value1 = value1.replace('</b>', '')
+        value1 = value1.replace('<span foreground="gray">', '')
+        value1 = value1.replace('</span>', '')
+        value2 = value2.replace('<b>', '')
+        value2 = value2.replace('</b>', '')
+        value2 = value2.replace('<span foreground="gray">', '')
+        value2 = value2.replace('</span>', '')
+        if value1 < value2:
+            return -1
+        else:
+            return 1
+        # don't need equal, as they should never be equal
+    
+    def WordListCompareFreq(self, model, row1, row2, user_data):
+        # have to use get_model to get from TreeModelFilter down to ListStore
+        value1 = model.get_value(row1, 1)
+        value2 = model.get_value(row2, 1)
+        if value1 < value2:
+            return -1
+        elif value1 == value2:
+            value1 = model.get_value(row1, 0)
+            value2 = model.get_value(row2, 0)
+            value1 = value1.replace('<b>', '')
+            value1 = value1.replace('</b>', '')
+            value1 = value1.replace('<span foreground="gray">', '')
+            value1 = value1.replace('</span>', '')
+            value2 = value2.replace('<b>', '')
+            value2 = value2.replace('</b>', '')
+            value2 = value2.replace('<span foreground="gray">', '')
+            value2 = value2.replace('</span>', '')
+            _, sort_type = model.get_model().get_sort_column_id()
+            if sort_type == Gtk.SortType.DESCENDING:
+                val = 1
+            else:
+                val = -1
+            if value1 < value2:
+                return val
+            else:
+                return -val
+            # don't need equal, as they should never be equal
+        else:
+            return 1
+    
+    def ShowSummaryStatusBar(self):
+        '''Put the number of texts and number of unique words
+        (and number filtered, if applicable) in the statusbar.
+        '''
+        totalWords = self.analysis.GetNumWords()
+        numFiltered = len(self.wordListTreeModelFilter)
+        text = _("Texts") + ": " + str(self.analysis.GetNumFiles())
+        text += "  " + _("Unique words") + ": " + str(totalWords)
+        if numFiltered < totalWords:
+            # the list is filtered, so display number of words found
+            text += "  ({} ".format(numFiltered) + _("filtered") + ")"
+        statusbar = myGlobalBuilder.get_object("statusbar")
+        statusbar.push(0, text)
+    
+
+    def __init__(self):
+        '''Initialize this PrimerPrepWindow object. Creates the window, with
+        menus, procedures associated with the menus, and text boxes to hold
+        all of the analysis data.
+        '''
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
+        # create an instance of WordAnalysis to store our data
+        self.analysis = WordAnalysis()
+        
+        # keep track of some builder UI objects
+        self.window = myGlobalBuilder.get_object("mainWindow")
+        self.affixList = myGlobalBuilder.get_object("affixList")
+        self.affixesExcluded = myGlobalBuilder.get_object("affixesExcludedRadioButton")
+        self.countEachWord = myGlobalBuilder.get_object("countWordEachTimeRadioButton")
+        self.fileListStore = myGlobalBuilder.get_object("fileListStore")
+        self.filterTextEntry = myGlobalBuilder.get_object("filterTextEntry")
+        self.wordListStore = myGlobalBuilder.get_object("wordListStore")
+        self.WordListFilter = myGlobalBuilder.get_object("wordListStore")
+        self.wordListTreeView = myGlobalBuilder.get_object("wordListTreeView")
+        self.wordListWordCellRenderer = myGlobalBuilder.get_object("wordListWordCellRenderer")
+        self.wordListFreqCellRenderer = myGlobalBuilder.get_object("wordListFreqCellRenderer")
+        self.wordListTreeModelFilter = myGlobalBuilder.get_object("wordListTreeModelFilter")
+        self.teachingOrderListStore = myGlobalBuilder.get_object("teachingOrderListStore")
+        self.teachingOrderTreeView = myGlobalBuilder.get_object("teachingOrderTreeView")
+        self.teachingOrderLetterCellRenderer = myGlobalBuilder.get_object("teachingOrderLetterCellRenderer")
+        self.teachingOrderFreqCellRenderer = myGlobalBuilder.get_object("teachingOrderFreqCellRenderer")
+        self.teachingOrderExamplesCellRenderer = myGlobalBuilder.get_object("teachingOrderExamplesCellRenderer")
+        self.removeSightWordsButton = myGlobalBuilder.get_object("removeSightWordsButton")
+        self.lessonTextsTreeView = myGlobalBuilder.get_object("lessonTextsTreeView")
+        self.lessonTextsTextView = myGlobalBuilder.get_object("lessonTextsTextView")
+        self.lessonTextsTextBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
+        self.lessonTextsLetterCellRenderer = myGlobalBuilder.get_object("lessonTextsLetterCellRenderer")
+        self.lessonTextsFreqCellRenderer = myGlobalBuilder.get_object("lessonTextsFreqCellRenderer")
+        
+        # prepare the analysis dialogs for future use
+        self.theAffixesDialog = AffixesDialog()
+        self.theWordBreaksDialog = WordBreaksDialog()
+        self.theDigraphsDialog = DigraphsDialog()
+        self.theWordEditDialog = WordEditDialog()
+        self.theSightWordsDialog = SightWordsDialog()
+        self.theConcordanceDialog = ConcordanceDialog()
+        self.theConfigureSFMDialog = ConfigureSFMDialog()
+        
+        self.ApplyFonts()
+        self.window.set_default_direction(Gtk.TextDirection.LTR)
+        self.isRTL = False
+        
+        # show the main PrimerPrep window
+        self.window.show_all()
+        
+        # disable certain options (set as defaults in the .glade file for startup)
+        #menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+        #menu.set_sensitive(False)
+        #button = myGlobalBuilder.get_object("removeSightWordsButton")
+        #button.set_sensitive(False)
+        
+        # set word list visible function to watch the Filter entry
+        self.wordListTreeModelFilter.set_visible_func(self.VisibleItem)
+        # set our specialized word/frequency sort functions
+        wordListTreeModelSort = myGlobalBuilder.get_object("wordListTreeModelSort")
+        wordListTreeModelSort.set_sort_func(0, self.WordListCompareWord, None)
+        wordListTreeModelSort.set_sort_func(1, self.WordListCompareFreq, None)
+        
+        # when a row of the treeview is selected, it emits a signal
+        teachingOrderSelection = self.teachingOrderTreeView.get_selection()
+        teachingOrderSelection.connect("changed", Handler.on_teachingOrderTreeView_change)
+        
+        # when a row of the treeview is selected, it emits a signal
+        lessonTextSelection = self.lessonTextsTreeView.get_selection()
+        lessonTextSelection.connect("changed", Handler.on_lessonTextsTreeView_change)
+        
+        # set up a tag for untaught residue
+        textBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
+        self.untaughtTag = textBuffer.create_tag("untaught", foreground="red")
+        
+        self.UpdateAffixList()
+        self.ShowSummaryStatusBar()
+        
+        # set up the CSS provider for the Notebook tabs
+        cssprovider = Gtk.CssProvider()
+        cssprovider.load_from_data(bytes(CSS.encode()))
+        screen = Gdk.Screen.get_default()
+        stylecontext = Gtk.StyleContext()
+        stylecontext.add_provider_for_screen(screen, cssprovider,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+
+def SaveConfig():
+    '''Save out the current config file.  Done whenever there is a change.'''
+    with open(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\PrimerPrep.ini', 'w') as configfile:
+        myGlobalConfig.write(configfile)        
+
+
+# If the program is run directly or passed as an argument to the python
+# interpreter then create a PrimerPrepWindow class instance and run it
+if __name__ == "__main__":
+    # make sure we have our default English translation set up
+    locale_path = os.path.realpath('.\po')
+    # a list of translation languages, each with a tuple
+    # (code, menu text, font (blank for default), direction (LTR or RTL), translation engine)
+    translation_languages = []
+    translation_languages.append( ( 'en_US', 'English Interface', '', 'LTR',
+                                    gettext.translation(APP_NAME, locale_path, languages=['en_US'], fallback = True) ) )
+    translation_languages.append( ( 'fr_FR', 'Interface française', '', 'LTR',
+                                    gettext.translation(APP_NAME, locale_path, languages=['fr_FR'], fallback = True) ) )
+    # set English as default language to start with
+    _ = translation_languages[0][4].gettext
+    
+    # initialize the global builder first, as we need to look up objects in our setup
+    myGlobalBuilder = GtkBuilder("PrimerPrep.glade", APP_NAME)
+    myGlobalBuilder.connect_signals(Handler())
+    
+    # initialize our global variables
+    myGlobalProgramPath = os.getcwd()
+    myGlobalPath = os.path.expanduser('~\\Documents')
+    # initialize the renderer before the window, since it will be needed in that setup
+    myGlobalRenderer = Renderer()
+    myGlobalWindow = PrimerPrepWindow()
+    
+    # make sure the English and French interface menu items are connected to the Handler
+    menuItem = myGlobalBuilder.get_object("englishInterfaceMenuItem")
+    menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, 'en_US', 0)
+    menuItem = myGlobalBuilder.get_object("frenchInterfaceMenuItem")
+    menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, 'fr_FR', 1)
+    
+    # for internationalization, we load languages from .json file
+    with open(os.path.join(locale_path, 'langs.json'), 'r', encoding='utf-8') as f:
+        langs = json.load(f)
+    
+    # create menu items for any languages beyond English or French
+    configMenu = myGlobalBuilder.get_object("configureMenu")
+    EnglishInterfaceMenu = myGlobalBuilder.get_object("englishInterfaceMenuItem")
+    for lang in sorted(langs):
+        if lang == 'en_US' or lang == 'fr_FR':
+            # we already dealt with these
+            continue
+        translation_languages.append( ( lang, langs[lang][0], langs[lang][1], langs[lang][2],
+                                        gettext.translation(APP_NAME, locale_path, languages=[lang], fallback = True) ) )
+        menuItem = Gtk.RadioMenuItem.new_with_label_from_widget(EnglishInterfaceMenu, langs[lang][0])
+        menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, lang, len(translation_languages) - 1)
+        configMenu.append(menuItem)
+        menuItem.set_visible(True)
+    
+    # load environment variables
+    myGlobalConfig.read(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\PrimerPrep.ini')
+    if 'Option' in myGlobalConfig:
+        myGlobalInterface = myGlobalConfig['Option'].get('lang', 'en_US')
+        if myGlobalInterface != 'en_US':
+            for idx, (code, title, font, direction, engine) in enumerate(translation_languages):
+                if code == myGlobalInterface:
+                    configMenu.get_children()[idx+3].activate()
+        if myGlobalConfig['Option'].get('digraphautosearch', '1') != '1':
+            myGlobalBuilder.get_object("autoSearchDigraphsMenuItem").set_active(False)
+        if myGlobalConfig['Option'].get('excludeaffixes', '1') != '1':
+            myGlobalBuilder.get_object("affixesSeparateWordsRadioButton").set_active(True)
+        if myGlobalConfig['Option'].get('countallwords', '1') != '1':
+            myGlobalBuilder.get_object("countWordOnlyOnceRadioButton").set_active(True)
+        if myGlobalConfig['Option'].get('separatecombdia', '0') != '0':
+            myGlobalBuilder.get_object("separateDiacriticsCheckButton").set_active(True)
+    else:
+        # no config file, create a default one and save it out
+        myGlobalConfig['Option'] = {'lang': 'en',
+                                    'digraphautosearch': '1',
+                                    'excludeaffixes': '1', 
+                                    'countallwords': '1',
+                                    'separatecombdia' : '0'}
+        # create the .ini file, and directories if necessary
+        if not os.path.exists(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\'):
+            os.makedirs(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\')
+        SaveConfig()
+        
+    
+    Gtk.main()
