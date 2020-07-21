@@ -17,6 +17,8 @@
 # © 2019 SIL International
 #
 # Modifications:
+# 3.11 JCH Jul 2020
+#    Make script more platform-agnostic, put conditionals on Windows-specific code
 # 3.10 JCH Jun 2020
 #    Add help files in Dari and Pashto
 # 3.05 JCH Oct 2019
@@ -82,7 +84,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.10"
+progVersion = "3.11"
 progYear = "2020"
 dataModelVersion = 1
 DEBUG = False
@@ -101,6 +103,7 @@ from gi import require_version
 require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, Pango
 import os
+import platform
 import re
 import codecs
 import unicodedata
@@ -126,6 +129,8 @@ myGlobalBuilder = None
 myGlobalWindow = None
 # global variable for the interface language (English by default)
 myGlobalInterface = 'en'
+# global variable for the config file (with complete path)
+myGlobalConfigFile = ''
 # global variable for the config object (so we can update settings and save them out)
 myGlobalConfig = configparser.ConfigParser()
 # global variable for holding the page index of the GTK notebook
@@ -1992,6 +1997,8 @@ class Handler:
         chooser.destroy()
     
     def on_autoSearchDigraphsMenuItem_toggled(self, widget, data=None):
+        global myGlobalWindow
+        global myGlobalConfig
         # menu processing has already toggled checkmark, we just load in its value
         myGlobalWindow.analysis.autoSearchDigraphs = widget.get_active()
         # update config object and save
@@ -2008,6 +2015,7 @@ class Handler:
     
     def on_interfaceMenuItem_activate(self, lang, idx):
         global myGlobalWindow
+        global myGlobalConfig
         global _
         settings = myGlobalWindow.window.get_settings()
         fontname = translation_languages[idx][2]
@@ -2104,6 +2112,7 @@ introducing the letters in a primer.""")
     
     def on_affixesRadioButton_toggled(self, *args):
         global myGlobalWindow
+        global myGlobalConfig
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
         # update config object and save
@@ -2126,6 +2135,7 @@ introducing the letters in a primer.""")
     
     def on_countWordRadioButton_toggled(self, *args):
         global myGlobalWindow
+        global myGlobalConfig
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
         # update config object and save
@@ -2910,15 +2920,24 @@ class PrimerPrepWindow:
 
 def SaveConfig():
     '''Save out the current config file.  Done whenever there is a change.'''
-    with open(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\PrimerPrep.ini', 'w') as configfile:
+    global myGlobalConfigFile
+    global myGlobalConfig
+    with open(myGlobalConfigFile, 'w') as configfile:
         myGlobalConfig.write(configfile)        
 
 
 # If the program is run directly or passed as an argument to the python
 # interpreter then create a PrimerPrepWindow class instance and run it
 if __name__ == "__main__":
+    # initialize our global variables
+    myGlobalProgramPath = os.path.dirname(os.path.realpath(__file__))
+    myGlobalPath = os.path.expanduser("~")
+    if platform.system() == "Windows":
+        #  for Windows, add Documents to the default path
+        myGlobalPath = os.path.join(myGlobalPath, 'Documents')
+    
     # make sure we have our default English translation set up
-    locale_path = os.path.realpath('.\po')
+    locale_path = os.path.join(myGlobalProgramPath, 'po')
     # a list of translation languages, each with a tuple
     # (code, menu text, font (blank for default), direction (LTR or RTL), translation engine)
     translation_languages = []
@@ -2933,9 +2952,6 @@ if __name__ == "__main__":
     myGlobalBuilder = GtkBuilder("PrimerPrep.glade", APP_NAME)
     myGlobalBuilder.connect_signals(Handler())
     
-    # initialize our global variables
-    myGlobalProgramPath = os.getcwd()
-    myGlobalPath = os.path.expanduser('~\\Documents')
     # initialize the renderer before the window, since it will be needed in that setup
     myGlobalRenderer = Renderer()
     myGlobalWindow = PrimerPrepWindow()
@@ -2964,9 +2980,19 @@ if __name__ == "__main__":
         configMenu.append(menuItem)
         menuItem.set_visible(True)
     
-    # load environment variables
-    myGlobalConfig.read(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\PrimerPrep.ini')
+    # determine the config file location, based on platform
+    if platform.system() == "Windows":
+        myGlobalConfigFile = os.path.join(os.environ['APPDATA'], 'SIL', 'PrimerPrep')
+    else:
+        myGlobalConfigFile = os.path.join(myGlobalPath, '.config', 'PrimerPrep')
+    # make sure the folder exists, then define the actual config file name (includes the full path)
+    os.makedirs(myGlobalConfigFile, exist_ok=True)
+    myGlobalConfigFile = os.path.join(myGlobalConfigFile, 'PrimerPrep.ini')
+    
+    # load environment variables, if doesn't exist return empty dataset
+    myGlobalConfig.read(myGlobalConfigFile)
     if 'Option' in myGlobalConfig:
+        # config file was found, so process the data
         myGlobalInterface = myGlobalConfig['Option'].get('lang', 'en_US')
         if myGlobalInterface != 'en_US':
             for idx, (code, title, font, direction, engine) in enumerate(translation_languages):
@@ -2987,9 +3013,7 @@ if __name__ == "__main__":
                                     'excludeaffixes': '1', 
                                     'countallwords': '1',
                                     'separatecombdia' : '0'}
-        # create the .ini file, and directories if necessary
-        if not os.path.exists(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\'):
-            os.makedirs(os.environ['APPDATA'] + '\\SIL\\PrimerPrep\\')
+        # create the .ini file
         SaveConfig()
         
     
