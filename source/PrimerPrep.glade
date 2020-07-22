@@ -1210,6 +1210,7 @@ the Language:</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="wrap_mode">word</property>
+                <property name="accepts_tab">False</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -1443,6 +1444,7 @@ the Language:</property>
             <property name="editable">False</property>
             <property name="cursor_visible">False</property>
             <property name="buffer">configureSFMTextBuffer</property>
+            <property name="accepts_tab">False</property>
             <property name="accepts_tab">False</property>
           </object>
           <packing>
@@ -1680,6 +1682,7 @@ the Language:</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="wrap_mode">word</property>
+                <property name="accepts_tab">False</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -1851,6 +1854,7 @@ the Language:</property>
                 <property name="can_focus">True</property>
                 <property name="wrap_mode">word</property>
                 <property name="buffer">sightWordsTextBuffer</property>
+                <property name="accepts_tab">False</property>
               </object>
               <packing>
                 <property name="expand">True</property>
