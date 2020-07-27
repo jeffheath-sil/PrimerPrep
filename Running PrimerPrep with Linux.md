@@ -168,7 +168,8 @@ fraser@vm-ubuntu20:~/PrimerPrep/source$ python3 ./PrimerPrep.py
 
 Happy PrimerPrepping!
 
-*Questions? Contact Fraser Bennett or Jeff Heath. There is contact information for Jeff at the bottom of the PrimerPrep Help file.*
+*Questions? Contact Fraser Bennett or Jeff Heath. There is contact information for Jeff at the bottom of the PrimerPrep Help file.
+Or you can report issues on the [GitHub issue tracker](https://github.com/jeffheath-sil/PrimerPrep/issues)*
 
 ## 4. (Optional) Delete unneeded files from the PrimerPrep repository
 
