@@ -14,9 +14,12 @@
 #
 # by Jeff Heath, SIL Chad
 #
-# © 2019 SIL International
+# © 2020 SIL International
 #
 # Modifications:
+# 3.12 JCH Nov 2020
+#    Bug fix: Handle ugly input (combining diacritics on '-', '[' and tab)
+#    Bug fix: Make sure concordance data doesn't have tabs, to confuse column output routine
 # 3.11 JCH Jul 2020
 #    Make script more platform-agnostic, put conditionals on Windows-specific code
 # 3.10 JCH Jun 2020
@@ -84,7 +87,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.11"
+progVersion = "3.12"
 progYear = "2020"
 dataModelVersion = 1
 DEBUG = False
@@ -843,8 +846,8 @@ class WordAnalysis:
         '''
         # build a RegExp that can split out individual characters
         # built outside loop because it is the same for every line
-        # make sure to attach any zero width joiners (ZWJs)
-        # but remove Word Joiners (WJs) - they are there to ensure
+        # make sure to attach any zero width joiners (ZWJs U+200d)
+        # but remove Word Joiners (WJs U+2060) - they are there to ensure
         # that the ZWJs get attached to the right character
         if self.separateCombDiacritics:
             # RegExp that treats combining diacritics separately
@@ -858,6 +861,18 @@ class WordAnalysis:
             # check all characters in line and if not seen before, add it
             # to word forming or breaking list (based on unicodedata.category)
             for char in re.findall(findChars, line):
+                if ord(char[-1]) in range(0x300, 0x36f):
+                    # last character is a combining diacritic
+                    #  get base character
+                    ch = char[0]
+                    if ch == '\u200d':
+                        # skip over ZWJ, if present
+                        ch = char[1]
+                    if unicodedata.category(ch)[0] not in 'LM':
+                        # base is not a letter or a mark
+                        # just ignore it for building the character list
+                        # this addresses problems like when the base character is '-' or ']', messing up regexes
+                        char = ' '
                 if char not in self.chars:
                     # this char has not been seen yet, mark as seen
                     self.chars[char] = 1
@@ -1740,9 +1755,10 @@ Please try again.""")
                         # only keep the text up to and including last breaks
                         posttext = m.group(1)
                     # store this information as a line in the concordance
-                    concordance += pretext + "\t" + \
-                                   wordsFound[i] + "\t" + \
-                                   posttext + "\n"
+                    # make sure to remove any tab characters in strings, to not throw off columns
+                    concordance += pretext.replace('\t', ' ') + "\t" + \
+                                   wordsFound[i].replace('\t', ' ') + "\t" + \
+                                   posttext.replace('\t', ' ') + "\n"
         # return the concordance, but without the final newline
         return concordance[:-1]
     
