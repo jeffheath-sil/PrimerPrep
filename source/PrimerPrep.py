@@ -14,9 +14,11 @@
 #
 # by Jeff Heath, SIL Chad
 #
-# © 2020 SIL International
+# © 2021 SIL International
 #
 # Modifications:
+# 3.13 JCH Nov 2021
+#    Bug fix: If first lesson is sight word, typing into its Lesson Text field causes infinite loop
 # 3.12 JCH Nov 2020
 #    Bug fix: Handle ugly input (combining diacritics on '-', '[' and tab)
 #    Bug fix: Make sure concordance data doesn't have tabs, to confuse column output routine
@@ -87,8 +89,8 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.12"
-progYear = "2020"
+progVersion = "3.13"
+progYear = "2021"
 dataModelVersion = 1
 DEBUG = False
 
@@ -2658,7 +2660,13 @@ class PrimerPrepWindow:
         
         # RegEx's don't need ^ at the start because we use re.match, which only matches at the beginning of the string
         # find all graphemesTaught and word break characters - all will be marked as taught
-        graphemesTaught = re.compile('(' + graphemeSearch + ')+')
+        if len(graphemeSearch) > 0:
+            # we have taught some graphemes, so make a RegEx that matches them
+            graphemesTaught = re.compile('(' + graphemeSearch + ')+')
+        else:
+            # we haven't yet taught any graphemes, so make a RegEx that will never match
+            graphemesTaught = re.compile('(?!)')
+        
         # always run graphemesUntaught after graphemesTaught, so the first character is not a taught character
         # find any characters (but as few as possible) that occur before a graphemeTaught, a word break, or end of the string
         graphemesUntaught = re.compile('.+?(?=(' + graphemeSearch + '|[' + wordBreaks + ']|$))')
