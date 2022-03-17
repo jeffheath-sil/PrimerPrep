@@ -17,8 +17,6 @@
 # © 2021 SIL International
 #
 # Modifications:
-# 3.14 JCH Mar 2022
-#    Bug fix: Allow saving the teaching order right after loading from a saved project file
 # 3.13 JCH Nov 2021
 #    Bug fix: If first lesson is sight word, typing into its Lesson Text field causes infinite loop
 # 3.12 JCH Nov 2020
@@ -91,8 +89,8 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.14"
-progYear = "2022"
+progVersion = "3.13"
+progYear = "2021"
 dataModelVersion = 1
 DEBUG = False
 
@@ -2549,14 +2547,6 @@ class PrimerPrepWindow:
                         self.affixList.modify_font(myGlobalRenderer.vernFontDesc)
                         self.lessonTextsTextView.modify_font(myGlobalRenderer.vernFontDesc)
                         self.ShowSummaryStatusBar()
-                        
-                        # allow the teaching order to be saved if project has one
-                        menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
-                        if hasattr(self.analysis, 'teachingOrder'):
-                            menu.set_sensitive(True)
-                        else:
-                            menu.set_sensitive(False)
-                            
                         # make sure we don't wipe out the data we just loaded
                         self.analysis.dataChanged = False
         chooser.destroy()
