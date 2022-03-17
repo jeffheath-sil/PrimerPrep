@@ -4,16 +4,16 @@
 [Setup]
 AppId={{98147582-17F0-4551-B49E-DB30B1607314}
 AppName=PrimerPrep
-AppVersion=3.13
+AppVersion=3.14
 AppPublisher=SIL International
-VersionInfoVersion=3.13
+VersionInfoVersion=3.43
 DefaultDirName={pf}\SIL\PrimerPrep
 DefaultGroupName=PrimerPrep
 UninstallDisplayIcon={uninstallexe}
 SetupIconFile=PrimerPrep.ico
 Compression=lzma2
 SolidCompression=yes
-OutputBaseFilename=PrimerPrep Installer v3.13
+OutputBaseFilename=PrimerPrep Installer v3.14
 
 [Files]
 Source: "dist\PrimerPrep\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
