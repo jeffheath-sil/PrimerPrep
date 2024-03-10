@@ -6,17 +6,24 @@
 # This program is a tool that helps in preparing a primer. The
 # program loads language texts, counts words and letters, and
 # suggests a teaching order for introducing the letters of the
-# language in a primer. It also can produce word concordances
-# and sequences of available words in a specific lesson.
+# language in a primer. It can test lesson texts for untaught
+# residue. It can also produce word concordances and sequences
+# of available words in a specific lesson.
 #
 # When run directly, this script will create and execute an instance
 # of the PrimerPrepWindow class.
 #
 # by Jeff Heath, SIL Chad
 #
-# © 2021 SIL International
+# © 2024 SIL International
 #
 # Modifications:
+# 3.20 JCH Sep 2023-Jan 2024
+#    Sort multigraphs (longest first) when processing, so that shorter don't hide longer
+#    Reworked marking of untaught residue (didn't handle digraphs correctly)
+#    Initial work on implementing CSS styles, handler for sight words font
+#    Fix depricated use of FileChooserDialog - buttons added afterwards
+#    Fixed some comments
 # 3.14 JCH Mar 2022
 #    Bug fix: Allow saving the teaching order right after loading from a saved project file
 # 3.13 JCH Nov 2021
@@ -91,8 +98,8 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.14"
-progYear = "2022"
+progVersion = "3.20"
+progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
 
@@ -144,18 +151,21 @@ myGlobalConfig = configparser.ConfigParser()
 myGlobalNotebookPage = 0
 
 
-CSS = """
-GtkNotebook tab {
-    background-color: Silver;
+# defaults for global CSS (Cascading Style Sheets) formatting
+GlobalCSS = """
+notebook tab {
+    background-color: silver;
     border: 1px black;
     border-style: solid solid none solid;
+    color: gray;
 }
-GtkNotebook tab:active {
+notebook tab:hover {
+    color: #606060;
+}
+notebook tab:checked {
     background-color: white;
-    border: 1px black;
-    border-style: solid solid none solid;
+    color: black;
 }
-
 """
 
 # present a message to the user
@@ -182,16 +192,16 @@ def SimpleYNQuestion(title, msgType, msg):
 
 
 
-class Renderer:
-    '''A class used to hold font rendering information
+class VernacularRenderer:
+    '''A class used to hold vernacular font rendering information
     
-    Creating an instance of this class loads the standard fonts and renderers
-    used in PrimerPrep. Use SelectFont to select/change to a new vernacular font.
+    Creating an instance of this class loads the standard renderer used
+    in PrimerPrep. Use SelectFont to select/change to a new vernacular font.
     
     Attributes:
       fontName (str) - current font selected for displaying vernacular text
-      numFontDesc (Pango.FontDescription) - font info for numeric text
-      numRendererText (Gtk.CellRendererText) - renderer for numeric text
+      global_style_provider (Gtk.CssProvider) - holds global (static) CSS configuration
+      vernacular_style_provider (Gtk.CssProvider) - holds CSS configuration for vernacular class
       vernFontDesc (Pango.FontDescription) - font info for vernacular text
       vernRendererText (Gtk.CellRendererText) - renderer for vernacular text
     '''
@@ -209,22 +219,46 @@ class Renderer:
         result = fontDlg.run()
         if result == Gtk.ResponseType.OK:
             self.fontName = fontDlg.get_font()
-            # set up the font description and renderer for vernacular text
+            # set up the font description and CellRendererText for vernacular text in TreeViews
             self.vernFontDesc = Pango.FontDescription(self.fontName)
             self.vernRendererText.set_property('font-desc', self.vernFontDesc)
+            # parse the fontName to get the family and size
+            m = re.match('(.+) (\d+)$', self.fontName)
+            if m:
+                # set up the CSS vernacular class (which will automatically update fields with this class)
+                VernacularCSS = """
+.vernacular {{
+  font-family: {}, serif;
+  font-size: {}pt;
+}}""".format(m.group(1), m.group(2))
+                self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
         fontDlg.destroy()
         return result == Gtk.ResponseType.OK
     
     def __init__(self):
         '''Initialize this Renderer object's attributes with the defaults.
         '''
-        self.fontName = "Charis SIL Compact 12"
-        # set up the font description and renderer for numbers in the TreeView
-        self.numFontDesc = Pango.FontDescription(self.fontName)
-        self.numRendererText = Gtk.CellRendererText()
-        self.numRendererText.set_property('font-desc', self.numFontDesc)
+        self.fontName = "Charis SIL Semi-Condensed 14"
+        #self.fontName = "Gentium 14"
+        # modifiable vernacular class CSS formatting
+        VernacularCSS = """
+.vernacular {
+  font-family: Charis SIL Semi-Condensed, serif;
+  font-size: 14pt;
+}"""
         
-        # set up the font description and renderer for vernacular text in the TreeView
+        # set up the global (static) CSS provider
+        self.global_style_provider = Gtk.CssProvider()
+        self.global_style_provider.load_from_data(bytes(GlobalCSS.encode()))
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), self.global_style_provider,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # set up the vernacular (modifiable) CSS provider
+        self.vernacular_style_provider = Gtk.CssProvider()
+        self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), self.vernacular_style_provider,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        
+        # set up the font description and CellRendererText for vernacular text in TreeViews
         self.vernFontDesc = Pango.FontDescription(self.fontName)
         self.vernRendererText = Gtk.CellRendererText()
         self.vernRendererText.set_property('font-desc', self.vernFontDesc)
@@ -244,17 +278,17 @@ class AffixesDialog:
         
         self.dialog = myGlobalBuilder.get_object('affixesDialog')
         self.textview = myGlobalBuilder.get_object('affixesDialogTextView')
+        # set up the textview to use the vernacular font
+        self.textview.get_style_context().add_class("vernacular")
         # monitor keypresses so we can close the dialog on Enter
         self.textview.connect('key-press-event', self.on_keyPress)
     
     def Run(self):
-        # set up the textview to use the vernacular font
-        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
         self.textview.grab_focus()
         self.textview.get_buffer().place_cursor(self.textview.get_buffer().get_end_iter())
         self.dialog.show_all()
         response = self.dialog.run()
-        # don't hide the dialog yet, as we run it until or cancel
+        # don't hide the dialog yet, as we run it until valid or cancel
         #self.dialog.hide()
         return (response == 1)
     
@@ -299,6 +333,7 @@ class WordBreaksDialog:
         
         #Gtk.TreeViewColumn(_("Word-Breaking"), myGlobalRenderer.vernRendererText, text=0)
         #wordBreakTreeView.append_column(column)
+        
         # put in ascending letter order
         self.wordBreakStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.wordBreakTreeView.connect("row-activated", self.on_WordBreak_doubleClick)
@@ -308,12 +343,13 @@ class WordBreaksDialog:
         #column = myGlobalBuilder.get_object('wordFormColumn')
         #column = Gtk.TreeViewColumn(_("Word-Forming"), myGlobalRenderer.vernRendererText, text=0)
         #self.wordFormTreeView.append_column(column)
+        
         # put in ascending letter order
         self.wordFormStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.wordFormTreeView.connect("row-activated", self.on_WordForm_doubleClick)
     
     def Run(self, wordBreakChars, wordFormChars):
-        # make sure TreeViews are using current font
+        # make sure TreeViews are using current vernacular font
         myGlobalBuilder.get_object('wordBreakCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
         myGlobalBuilder.get_object('wordFormCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
         # clear the store and add each of the letters in the wordBreakChars list
@@ -404,7 +440,7 @@ class DigraphsDialog:
     '''A class used to present a dialog for specifying the digraphs in the language.
     
     Attributes:
-      dialog (Dialog object) - dialog for managing word-breaking/forming chars
+      dialog (Dialog object) - dialog for entering diagraphs (and multigraphs)
       textview (TextView object) - text field where user types/edits digraph list
     '''
     
@@ -416,12 +452,12 @@ class DigraphsDialog:
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object('digraphsDialog')
         self.textview = myGlobalBuilder.get_object('digraphsDialogTextView')
+        # set up the textview to use the vernacular font
+        self.textview.get_style_context().add_class("vernacular")
         # monitor keypresses so we can close the dialog on Enter
         self.textview.connect('key-press-event', self.on_keyPress)
     
     def Run(self):
-        # set up the textview to use the vernacular font
-        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
         self.textview.grab_focus()
         self.textview.get_buffer().place_cursor(self.textview.get_buffer().get_end_iter())
         response = self.dialog.run()
@@ -476,6 +512,8 @@ class WordEditDialog:
         self.divideView = myGlobalBuilder.get_object("divideWordTextView")
         self.divideBuffer = myGlobalBuilder.get_object("divideWordTextBuffer")
         self.concordanceListStore = myGlobalBuilder.get_object("concordanceListStore")
+        # set up the textview to use the vernacular font
+        self.divideView.get_style_context().add_class("vernacular")
         # monitor clicks of the exclude CheckButton
         self.excludeWord.connect("clicked", self.on_ExcludeWord_click)
         # monitor keypresses so we can close the dialog on Enter
@@ -493,8 +531,6 @@ class WordEditDialog:
         global myGlobalBuilder
         global myGlobalWindow
         
-        # set up the textview to use the vernacular font
-        self.divideView.modify_font(myGlobalRenderer.vernFontDesc)
         # make sure TreeView columns are using current font
         myGlobalBuilder.get_object('wordConcordPreCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
         myGlobalBuilder.get_object('wordConcordWordCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
@@ -503,8 +539,7 @@ class WordEditDialog:
         label = '<b>' + _("Indicate how you want to analyze the word: '{}'").format(word) + '</b>'
         myGlobalBuilder.get_object('wordEditDialogLabel').set_markup(label)
         self.excludeWord.set_active(wordExcluded)
-        divideWordTextBuffer = myGlobalBuilder.get_object('divideWordTextBuffer')
-        divideWordTextBuffer.set_text(affix_word)
+        self.divideBuffer.set_text(affix_word)
         
         self.concordanceListStore.clear()
         if len(data) > 0:
@@ -573,10 +608,10 @@ class ConfigureSFMDialog:
         self.processButton = myGlobalBuilder.get_object("configureSFMProcessButton")
         self.ignoreEntry = myGlobalBuilder.get_object("configureSFMIgnoreEntry")
         self.processEntry = myGlobalBuilder.get_object("configureSFMProcessEntry")
+        # set up the textview to use the vernacular font
+        self.textview.get_style_context().add_class("vernacular")
     
     def Run(self, introText, initIgnoreLines, initProcessLines):
-        global myGlobalRenderer
-        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
         self.textbuffer.set_text(introText)
         self.ignoreEntry.set_text(initIgnoreLines)
         self.processEntry.set_text(initProcessLines)
@@ -653,18 +688,17 @@ class SightWordsDialog:
     def __init__(self):
         '''Prepare dialog for defining digraphs, for running later.'''
         global myGlobalBuilder
-        global myGlobalRenderer
         
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object('sightWordsDialog')
         self.textview = myGlobalBuilder.get_object('sightWordsDialogTextView')
         self.textbuf = myGlobalBuilder.get_object('sightWordsTextBuffer')
+        # set up the textview to use the vernacular font
+        self.textview.get_style_context().add_class("vernacular")
         # monitor keypresses so we can close the dialog on Enter
         self.textview.connect('key-press-event', self.on_keyPress)
     
     def Run(self):
-        # set up the textview to use the vernacular font
-        self.textview.modify_font(myGlobalRenderer.vernFontDesc)
         self.textview.grab_focus()
         self.textbuf.place_cursor(self.textbuf.get_end_iter())
         response = self.dialog.run()
@@ -842,9 +876,9 @@ class WordAnalysis:
         return isSFMFile
     
     def FindChars(self, lines):
-        '''Takes a list of lines and for each line, break it into words which
-        are added into the words dictionary (which keeps a frequency count).
-        Also do auto-search for digraphs in each word.
+        '''Takes a list of lines and for each line, check each character
+        (making sure to combine diacritics or not) and record it as
+        word forming or word breakinng.
         
         Parameter: lines (list of str) - lines of text to be analyzed
         '''
@@ -1032,7 +1066,10 @@ class WordAnalysis:
             return
         
         # convert the digraphs list into a RegExp OR group
-        digraphStr = '|'.join(self.digraphs)
+        digraphList = self.digraphs
+        # make sure that the longer multigraphs come first, or they might not get matched
+        digraphList.sort(key=len, reverse=True)
+        digraphStr = '|'.join(digraphList)
         if len(digraphStr) > 0:
             digraphStr += '|'
         
@@ -1530,7 +1567,7 @@ class WordAnalysis:
                             valid = False
                             break
                     # make sure they don't repeat using a set() trick
-                    if len(digraphList)!=len(set(digraphList)):
+                    if len(digraphList) != len(set(digraphList)):
                         # the elements in the list are not unique
                         valid = False
                 if valid:
@@ -1938,11 +1975,8 @@ class GtkBuilder(Gtk.Builder):
                 obj = self.get_object(parent_id)
                 func = getattr(obj, 'set_{}'.format(name), func_not_found)
                 translatedString = _(child.text)
-                logger.debug('Translate Glade object ({}): set_{}({})'.format(
-                    parent_id, 
-                    name, 
-                    translatedString
-                ))
+                #logger.debug('Translate Glade object ({}): set_{}({})'.format(
+                    #parent_id, name, translatedString ))
                 func(_(translatedString))
 
 
@@ -1963,10 +1997,10 @@ class Handler:
         global myGlobalWindow
         global myGlobalPath
         msg = _("Save teaching order as...")
-        chooser = Gtk.FileChooserDialog(msg, myGlobalWindow.window,
-                                        Gtk.FileChooserAction.SAVE,
-                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
-                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser = Gtk.FileChooserDialog(title=msg, parent=myGlobalWindow.window,
+                                        action=Gtk.FileChooserAction.SAVE)
+        chooser.add_buttons(Gtk.STOCK_SAVE, Gtk.ResponseType.OK,
+                            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_transient_for(myGlobalWindow.window)
         chooser.set_current_name(_("TeachingOrder.txt"))
         chooser.set_current_folder(myGlobalPath)
@@ -1985,10 +2019,10 @@ class Handler:
         global myGlobalWindow
         global myGlobalPath
         msg = _("Save word list as...")
-        chooser = Gtk.FileChooserDialog(msg, myGlobalWindow.window,
-                                        Gtk.FileChooserAction.SAVE,
-                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
-                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser = Gtk.FileChooserDialog(title=msg, parent=myGlobalWindow.window,
+                                        action=Gtk.FileChooserAction.SAVE)
+        chooser.add_buttons(Gtk.STOCK_SAVE, Gtk.ResponseType.OK,
+                            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_transient_for(myGlobalWindow.window)
         chooser.set_current_name(_("WordList.txt"))
         chooser.set_current_folder(myGlobalPath)
@@ -2040,7 +2074,11 @@ class Handler:
         settings = myGlobalWindow.window.get_settings()
         fontname = translation_languages[idx][2]
         if len(fontname) == 0:
-            fontname = 'Sans 10'
+            # set font based on OS
+            if platform.system() == "Windows":
+                fontname = 'Segoe UI 12'
+            else:
+                fontname = 'Ubuntu 12'
         settings.set_property('gtk-font-name', fontname)
         if translation_languages[idx][3] == 'RTL':
             myGlobalWindow.window.set_default_direction(Gtk.TextDirection.RTL)
@@ -2342,7 +2380,7 @@ verify that all of your digraphs are correct.""")
             txt = myGlobalWindow.analysis.lessonTexts.get(myGlobalWindow.analysis.selectedGrapheme, "")
             myGlobalWindow.lessonTextsTextBuffer.set_text(txt)
         
-        # try to grab the focus int he TextView (but this doesn't seem to work...)
+        # try to grab the focus in the TextView (but this doesn't seem to work...)
         myGlobalWindow.lessonTextsTextView.grab_focus()
         # make sure cursor is at the end of any existing text
         myGlobalWindow.lessonTextsTextBuffer.place_cursor(myGlobalWindow.lessonTextsTextBuffer.get_end_iter())
@@ -2388,7 +2426,6 @@ lessons and the current teaching order.""")
                 SimpleMessage(title, 'dialog-warning', msg)
             # remember which page we are on now
             myGlobalNotebookPage = index
-
 
 
 class PrimerPrepWindow:
@@ -2453,10 +2490,10 @@ class PrimerPrepWindow:
         global myGlobalRenderer
         
         msg = _("Save project as...")
-        chooser = Gtk.FileChooserDialog(msg, self.window,
-                                        Gtk.FileChooserAction.SAVE,
-                                        (Gtk.STOCK_SAVE, Gtk.ResponseType.OK, 
-                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
+                                        action=Gtk.FileChooserAction.SAVE)
+        chooser.add_buttons(Gtk.STOCK_SAVE, Gtk.ResponseType.OK,
+                            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_current_name(_("project.ppdata"))
         chooser.set_current_folder(myGlobalPath)
         #chooser.set_do_overwrite_confirmation(True)
@@ -2503,10 +2540,10 @@ class PrimerPrepWindow:
         global myGlobalRenderer
         
         msg = _("Choose project to load...")
-        chooser = Gtk.FileChooserDialog(msg, self.window,
-                                        Gtk.FileChooserAction.OPEN,
-                                        (Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
-                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
+                                        action=Gtk.FileChooserAction.OPEN)
+        chooser.add_buttons(Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+                            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
         chooser.set_default_response(Gtk.ResponseType.CANCEL)
         chooser.set_select_multiple(False)
@@ -2545,9 +2582,6 @@ class PrimerPrepWindow:
                         self.analysis.UpdateWordList(self.wordListStore)
                         self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
                         self.UpdateAffixList()
-                        # make sure the vernacular font loaded is being used
-                        self.affixList.modify_font(myGlobalRenderer.vernFontDesc)
-                        self.lessonTextsTextView.modify_font(myGlobalRenderer.vernFontDesc)
                         self.ShowSummaryStatusBar()
                         
                         # allow the teaching order to be saved if project has one
@@ -2571,10 +2605,10 @@ class PrimerPrepWindow:
                     data (unused)
         '''
         msg = _("Choose text(s) to open...")
-        chooser = Gtk.FileChooserDialog(msg, self.window,
-                                        Gtk.FileChooserAction.OPEN,
-                                        (Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
-                                         Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL))
+        chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
+                                        action=Gtk.FileChooserAction.OPEN)
+        chooser.add_buttons(Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+                            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
         chooser.set_default_response(Gtk.ResponseType.CANCEL)
         chooser.set_select_multiple(True)
@@ -2612,7 +2646,7 @@ class PrimerPrepWindow:
     
     def MarkUntaught(self, widget):
         '''The lesson text changed. Tag untaught words/letters with 'self.untaughtTag'.
-        This involves checking individual words for sight words, and individual letters.
+        This involves checking individual words for sight words, and individual graphemes.
         
         Parameters: widget - TextBuffer
         TODO: If a lesson has a character that doesn't appear at all in the loaded texts,
@@ -2623,7 +2657,7 @@ class PrimerPrepWindow:
         (model, row) = sel.get_selected()
         if row is None or not hasattr(self.analysis, 'teachingOrder'):
             # there is no row selected, or there is no teachingOrder,
-            # so whatever is there is untaught residue
+            # so whatever is there should be marked as untaught residue
             # this probably only happens when there is an empty teaching order...
             widget.apply_tag(self.untaughtTag, widget.get_start_iter(), widget.get_end_iter())
             return
@@ -2632,33 +2666,45 @@ class PrimerPrepWindow:
         path = model.get_path(row)
         idx = path.get_indices()[0]
         
-        # get a list of the graphemes taught and the sight words
-        graphemes = []
-        sightWords = []
+        # create a list of the graphemes taught and make a set (for faster lookup) of sight words
+        graphemesTaughtList = []
+        sightWords = set()
         for i in range(idx+1):
             letter = self.analysis.teachingOrder[i]
             if isinstance(letter, int):
-                # actually a placeholder for sightwords, so add them (in lower case) to the list
-                sightWords.extend( [ sw.lower() for sw in self.analysis.sightWords[letter-1] ] )
+                # this is actually a placeholder for sightwords, so add them (in lower case) to the dictionary
+                for sw in self.analysis.sightWords[letter-1]:
+                    # remove any hyphens from affix sight words, as that leads to better marking of untaught residue
+                    if sw.startswith('-'):
+                        sw = sw[1:]
+                    if sw.endswith('-'):
+                        sw = sw[:-1]
+                    # if not empty (hyphen by itself?) save in dictionary
+                    if len(sw) > 0:
+                        sightWords.add(sw.lower())
             else:
-                graphemes.append(letter)
+                graphemesTaughtList.append(letter)
+        # create a list of the graphemes NOT taught
+        graphemesUntaughtList = []
+        for i in range(idx+1, len(self.analysis.teachingOrder)):
+            letter = self.analysis.teachingOrder[i]
+            if isinstance(letter, int):
+                # do nothing with untaught sightwords
+                pass
+            else:
+                graphemesUntaughtList.append(letter)
         
-        # remove the hyphens from affix sight words, as that leads to better marking of untaught residue
-        for i, sw in enumerate(sightWords):
-            if sw.startswith('-'):
-                sightWords[i] = sw[1:]
-            if sw.endswith('-'):
-                sightWords[i] = sw[:-1]
-        # just in case there was a lone hyphen by itself...
-        while '' in sightWords:
-            sightWords.remove('')
+        # create a regex for finding all graphemes, with longest graphemes first so that multigraphs match
+        # Note: RegEx's don't need ^ at the start because we use re.match, which only matches at the beginning of the string
+        allGraphemesList = graphemesTaughtList + graphemesUntaughtList
+        allGraphemesList.sort(key=len, reverse=True)
+        allGraphemesRegEx = '|'.join(allGraphemesList)
+        findAllGraphemes = re.compile('(' + allGraphemesRegEx + ')')
         
-        # combine the graphemes for making RegEx's to find sequences of graphemes and untaught residue, or signt words
-        graphemeSearch = '|'.join(graphemes)
-        #allGraphemeSearch = '|'.join(graphemes + untaughtGraphemes)
-        wordBreaks = '|'.join(self.analysis.wordBreakChars)
+        # quick way to tell if grapheme found has been taught or not
+        graphemesTaughtSet = set(graphemesTaughtList)
         
-        # build 'wordBreaks' string with all word breaking characters for RegExp splitting
+        # build 'wordBreaks' string with all word breaking characters for RegEx splitting
         wordBreaks = ''
         for char in self.analysis.wordBreakChars:
             # need to put '\' before special characters
@@ -2668,77 +2714,109 @@ class PrimerPrepWindow:
         # add line breaks as well, since they don't seem to be in the wordBreakChars list
         wordBreaks += '\n\r'
         
-        # RegEx's don't need ^ at the start because we use re.match, which only matches at the beginning of the string
-        # find all graphemesTaught and word break characters - all will be marked as taught
-        if len(graphemeSearch) > 0:
-            # we have taught some graphemes, so make a RegEx that matches them
-            graphemesTaught = re.compile('(' + graphemeSearch + ')+')
-        else:
-            # we haven't yet taught any graphemes, so make a RegEx that will never match
-            graphemesTaught = re.compile('(?!)')
+        # create a regex for finding the next word chunk
+        findWordChunk = re.compile(r'(.*?)([' + wordBreaks + ']+|$)')
         
-        # always run graphemesUntaught after graphemesTaught, so the first character is not a taught character
-        # find any characters (but as few as possible) that occur before a graphemeTaught, a word break, or end of the string
-        graphemesUntaught = re.compile('.+?(?=(' + graphemeSearch + '|[' + wordBreaks + ']|$))')
+        # start in "taught" section
+        inTaughtSection = True
         
-        # find word breaks
-        findWordBreaks = re.compile('[' + wordBreaks + ']+')
-        # find sight words, but must be followed by a letter that won't be taught (word break or end of string)
-        if len(sightWords) > 0:
-            findSightWord = re.compile('(' + '|'.join(sightWords) + ')([' + wordBreaks + ']|$)+')
-        else:
-            # this is a RegEx that will never match, since we don't have any sight words to find
-            findSightWord = re.compile('(?!)')
-        
+        # initialize loop variables
         start_iter = widget.get_start_iter()
-        text = widget.get_text(start_iter, widget.get_end_iter(), False).lower()
         end_iter = start_iter.copy()
-        while len(text) > 0:
-            # advance over word break characters, before any other checks
-            m = findWordBreaks.match(text)
-            if m:
-                numChars = len(m.group(0))
-                if numChars > 0:
-                    end_iter.forward_chars(numChars)
-                    widget.remove_tag(self.untaughtTag, start_iter, end_iter)
-                    start_iter = end_iter.copy()
-                    # remove graphemes dealt with already
-                    text = text[numChars:]
-            # check to see if there is a sight word
-            m = findSightWord.match(text)
-            if m:
-                # the RegEx matches all following words breaks as well (which are also not marked untaught)
-                numChars = len(m.group(0))
-                if numChars > 0:
-                    end_iter.forward_chars(numChars)
-                    widget.remove_tag(self.untaughtTag, start_iter, end_iter)
-                    start_iter = end_iter.copy()
-                    # remove graphemes dealt with already
-                    text = text[numChars:]
-            else:
-                # whenever we hit word break characters, we have to loop around to check sight words again
-                while len(text) > 0 and text[0] not in wordBreaks:
-                    # check to see if there are graphemes that have been taught
-                    m = graphemesTaught.match(text)
-                    if m:
-                        numChars = len(m.group(0))
-                        if numChars > 0:
-                            end_iter.forward_chars(numChars)
+        text = widget.get_text(start_iter, widget.get_end_iter(), False).lower()
+        pos = 0
+        secStart = 0
+        #
+        # loop over entire text
+        # - find the next word, up to the next wordbreak character(s), and see if it's a sightword
+        # - if sightword, mark as taught
+        # - if not, go through the word one grapheme at a time and mark taught/untaught as appropriate
+        # - wordbreak characters are considered taught
+        #
+        while pos < len(text):
+            # find next word (this will always match, but sometimes will give empty string)
+            m = findWordChunk.match(text, pos)
+            nextWord = m.group(1)
+            # get the length of the word
+            wordLength = len(nextWord)
+            wordBreaksLength = len(m.group(2))
+            endWordPos = pos + wordLength
+            if nextWord in sightWords:
+                #print("INFO: taught sightword ({}-{})".format(pos, endWordPos))
+                # since we were already in (taught) wordbreak characters, 
+                pos = endWordPos
+                continue
+            # not a sightword, so just process the graphemes in this word one by one
+            while pos < endWordPos:
+                m = findAllGraphemes.match(text, pos)
+                if not m:
+                    # grapheme not found, so must be untaught
+                    # (should only happen if it's a character not in the loaded texts?)
+                    if inTaughtSection:
+                        # switch taught/untaught section
+                        if pos > secStart:
+                            end_iter.forward_chars(pos-secStart)
                             widget.remove_tag(self.untaughtTag, start_iter, end_iter)
                             start_iter = end_iter.copy()
-                            # remove graphemes dealt with already
-                            text = text[numChars:]
-                    else:
-                        # see if there are any untaught graphemes
-                        m = graphemesUntaught.match(text)
-                        if m:
-                            numChars = len(m.group(0))
-                            if numChars > 0:
-                                end_iter.forward_chars(numChars)
+                            #print("taught ({}-{})".format(secStart, pos))
+                            secStart = pos
+                        inTaughtSection = False
+                    # move to the next character
+                    pos += 1
+                else:
+                    # grapheme was found
+                    gr = m.group(1)
+                    if gr in graphemesTaughtSet:
+                        # this grapheme has already been taught
+                        if not inTaughtSection:
+                            # switch taught/untaught section
+                            if pos > secStart:
+                                end_iter.forward_chars(pos-secStart)
                                 widget.apply_tag(self.untaughtTag, start_iter, end_iter)
                                 start_iter = end_iter.copy()
-                                # remove graphemes dealt with already
-                                text = text[numChars:]
+                                #print("untaught ({}-{})".format(secStart, pos))
+                                secStart = pos
+                            inTaughtSection = True
+                    else:
+                        # this grapheme hasn't been taught
+                        if inTaughtSection:
+                            # switch taught/untaught section
+                            if pos > secStart:
+                                end_iter.forward_chars(pos-secStart)
+                                widget.remove_tag(self.untaughtTag, start_iter, end_iter)
+                                start_iter = end_iter.copy()
+                                #print("taught ({}-{})".format(secStart, pos))
+                                secStart = pos
+                            inTaughtSection = False
+                    # move past this grapheme
+                    pos += len(gr)
+            # move the pos pointer past wordBreaks
+            if wordBreaksLength > 0:
+                # close any open untaught section
+                if not inTaughtSection:
+                    # switch taught/untaught section
+                    if pos > secStart:
+                        end_iter.forward_chars(pos-secStart)
+                        widget.apply_tag(self.untaughtTag, start_iter, end_iter)
+                        start_iter = end_iter.copy()
+                        #print("untaught ({}-{})".format(secStart, pos))
+                        secStart = pos
+                    inTaughtSection = True
+                pos += wordBreaksLength
+                    
+        # report final section
+        if inTaughtSection:
+            if pos > secStart:
+                end_iter.forward_chars(pos-secStart)
+                widget.remove_tag(self.untaughtTag, start_iter, end_iter)
+                start_iter = end_iter.copy()
+                #print("taught ({}-{})".format(secStart, pos))
+        else:
+            if pos > secStart:
+                end_iter.forward_chars(pos-secStart)
+                widget.apply_tag(self.untaughtTag, start_iter, end_iter)
+                start_iter = end_iter.copy()
+                #print("untaught ({}-{})".format(secStart, pos))
     
     def SaveLessonText(self, grapheme):
         # save out the current text into the entry for the previously selected grapheme
@@ -2748,34 +2826,32 @@ class PrimerPrepWindow:
             self.analysis.lessonTexts[grapheme] = self.lessonTextsTextBuffer.get_text(s, e, False)
     
     def UpdateAffixList(self):
-        # update the affix list field with these new affixes
-        global myGlobalBuilder
-        
+        # update the affix list field with new affixes (add/remove vernacular class, as necessary)
         if len(self.analysis.affixes) > 0:
             # there are some affixes, so display them
             affixes = ' '.join(self.analysis.affixes)
             # affixes.replace('-', '\u2013')
             # break the lines only on spaces (auto-breaking sometimes puts suffix hyphen at end of row)
             affixes = re.sub('(.{30,40}) ', '\\1\n', affixes)
+            self.affixList.get_style_context().add_class("vernacular")
         else:
             affixes = _("<i>empty</i>")
+            self.affixList.get_style_context().remove_class("vernacular")
         self.affixList.set_markup(affixes)
     
     def ApplyFonts(self):
+        # apply a new vernacular font, primarily updating the CellRendererText properties
         global myGlobalRenderer
-        self.affixList.modify_font(myGlobalRenderer.vernFontDesc)
+        
         # process affixes again, in case we switched between fonts that need/don't need ZWJ
+        self.UpdateAffixList()
         self.analysis.ProcessAffixes()
         self.analysis.UpdateWordList(self.wordListStore)
-        self.filterTextEntry.modify_font(myGlobalRenderer.vernFontDesc)
+        
         self.wordListWordCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
-        self.wordListFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
         self.teachingOrderLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
-        self.teachingOrderFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
         self.teachingOrderExamplesCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
         self.lessonTextsLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
-        self.lessonTextsFreqCellRenderer.set_property('font-desc', myGlobalRenderer.numFontDesc)
-        self.lessonTextsTextView.modify_font(myGlobalRenderer.vernFontDesc)
         # need to do this additional step to make sure that resized fonts are handled appropriately
         self.wordListTreeView.get_column(0).queue_resize()
         self.teachingOrderTreeView.get_column(0).queue_resize()
@@ -2862,6 +2938,14 @@ class PrimerPrepWindow:
         statusbar = myGlobalBuilder.get_object("statusbar")
         statusbar.push(0, text)
     
+    def letter_cell_data_func(self, column, cell, model, iter, data):
+        content = model.get_value(iter, 0)
+    
+        if content == '\u2686\u2686':
+            vernFontDesc = Pango.FontDescription("DejaVu Sans 14")
+            cell.set_property('font-desc', vernFontDesc)
+        else:
+            cell.set_property('font-desc', myGlobalRenderer.vernFontDesc)
 
     def __init__(self):
         '''Initialize this PrimerPrepWindow object. Creates the window, with
@@ -2889,6 +2973,7 @@ class PrimerPrepWindow:
         self.wordListTreeModelFilter = myGlobalBuilder.get_object("wordListTreeModelFilter")
         self.teachingOrderListStore = myGlobalBuilder.get_object("teachingOrderListStore")
         self.teachingOrderTreeView = myGlobalBuilder.get_object("teachingOrderTreeView")
+        self.teachingOrderLetterColumn = myGlobalBuilder.get_object("teachingOrderLetterColumn")
         self.teachingOrderLetterCellRenderer = myGlobalBuilder.get_object("teachingOrderLetterCellRenderer")
         self.teachingOrderFreqCellRenderer = myGlobalBuilder.get_object("teachingOrderFreqCellRenderer")
         self.teachingOrderExamplesCellRenderer = myGlobalBuilder.get_object("teachingOrderExamplesCellRenderer")
@@ -2896,6 +2981,7 @@ class PrimerPrepWindow:
         self.lessonTextsTreeView = myGlobalBuilder.get_object("lessonTextsTreeView")
         self.lessonTextsTextView = myGlobalBuilder.get_object("lessonTextsTextView")
         self.lessonTextsTextBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
+        self.lessonTextsLetterColumn = myGlobalBuilder.get_object("lessonTextsLetterColumn")
         self.lessonTextsLetterCellRenderer = myGlobalBuilder.get_object("lessonTextsLetterCellRenderer")
         self.lessonTextsFreqCellRenderer = myGlobalBuilder.get_object("lessonTextsFreqCellRenderer")
         
@@ -2908,14 +2994,25 @@ class PrimerPrepWindow:
         self.theConcordanceDialog = ConcordanceDialog()
         self.theConfigureSFMDialog = ConfigureSFMDialog()
         
+        # set the default UI font, based on OS
+        if platform.system() == "Windows":
+            self.window.get_settings().set_property('gtk-font-name', 'Segoe UI 12')
+        else:
+            self.window.get_settings().set_property('gtk-font-name', 'Ubuntu 12')
+        
+        # add a vernacular class to vernacular fields (the TreeViews are handled manually in ApplyFonts)
+        self.filterTextEntry.get_style_context().add_class("vernacular")
+        self.lessonTextsTextView.get_style_context().add_class("vernacular")
+        # set the vernacular font
         self.ApplyFonts()
+        
         self.window.set_default_direction(Gtk.TextDirection.LTR)
         self.isRTL = False
         
         # show the main PrimerPrep window
         self.window.show_all()
         
-        # disable certain options (set as defaults in the .glade file for startup)
+        # disable certain options (these are set as defaults in the .glade file for startup)
         #menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
         #menu.set_sensitive(False)
         #button = myGlobalBuilder.get_object("removeSightWordsButton")
@@ -2928,11 +3025,15 @@ class PrimerPrepWindow:
         wordListTreeModelSort.set_sort_func(0, self.WordListCompareWord, None)
         wordListTreeModelSort.set_sort_func(1, self.WordListCompareFreq, None)
         
-        # when a row of the treeview is selected, it emits a signal
+        # when a row of the teaching order treeview is selected, it emits a signal
         teachingOrderSelection = self.teachingOrderTreeView.get_selection()
         teachingOrderSelection.connect("changed", Handler.on_teachingOrderTreeView_change)
         
-        # when a row of the treeview is selected, it emits a signal
+        # need a special handler for the letter column (in teaching order and lesson texts) to set font for sightwords symbol
+        self.teachingOrderLetterColumn.set_cell_data_func(self.teachingOrderLetterCellRenderer, self.letter_cell_data_func)
+        self.lessonTextsLetterColumn.set_cell_data_func(self.lessonTextsLetterCellRenderer, self.letter_cell_data_func)
+        
+        # when a row of the lesson texts treeview is selected, it emits a signal
         lessonTextSelection = self.lessonTextsTreeView.get_selection()
         lessonTextSelection.connect("changed", Handler.on_lessonTextsTreeView_change)
         
@@ -2940,16 +3041,7 @@ class PrimerPrepWindow:
         textBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
         self.untaughtTag = textBuffer.create_tag("untaught", foreground="red")
         
-        self.UpdateAffixList()
         self.ShowSummaryStatusBar()
-        
-        # set up the CSS provider for the Notebook tabs
-        cssprovider = Gtk.CssProvider()
-        cssprovider.load_from_data(bytes(CSS.encode()))
-        screen = Gdk.Screen.get_default()
-        stylecontext = Gtk.StyleContext()
-        stylecontext.add_provider_for_screen(screen, cssprovider,
-                                             Gtk.STYLE_PROVIDER_PRIORITY_USER)
 
 
 def SaveConfig():
@@ -2986,8 +3078,8 @@ if __name__ == "__main__":
     myGlobalBuilder = GtkBuilder("PrimerPrep.glade", APP_NAME)
     myGlobalBuilder.connect_signals(Handler())
     
-    # initialize the renderer before the window, since it will be needed in that setup
-    myGlobalRenderer = Renderer()
+    # initialize the renderer (and also set up CSS style providers) before the window, since window code needs it
+    myGlobalRenderer = VernacularRenderer()
     myGlobalWindow = PrimerPrepWindow()
     
     # make sure the English and French interface menu items are connected to the Handler
