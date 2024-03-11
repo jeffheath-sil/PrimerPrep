@@ -4,21 +4,21 @@
 [Setup]
 AppId={{98147582-17F0-4551-B49E-DB30B1607314}
 AppName=PrimerPrep
-AppVersion=3.14
+AppVersion=3.28
 AppPublisher=SIL International
-VersionInfoVersion=3.43
-DefaultDirName={pf}\SIL\PrimerPrep
+VersionInfoVersion=3.28
+DefaultDirName={commonpf}\SIL\PrimerPrep
 DefaultGroupName=PrimerPrep
 UninstallDisplayIcon={uninstallexe}
 SetupIconFile=PrimerPrep.ico
 Compression=lzma2
 SolidCompression=yes
-OutputBaseFilename=PrimerPrep Installer v3.14
+OutputBaseFilename=PrimerPrep Installer v3.28
 
 [Files]
 Source: "dist\PrimerPrep\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "CharisSILCompact-R.ttf"; DestDir: "{fonts}"; FontInstall: "Charis SIL Compact Regular"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "CharisSILCompact-B.ttf"; DestDir: "{fonts}"; FontInstall: "Charis SIL Compact Bold"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "CharisSILCompact-R.ttf"; DestDir: "{commonfonts}"; FontInstall: "Charis SIL Compact Regular"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "CharisSILCompact-B.ttf"; DestDir: "{commonfonts}"; FontInstall: "Charis SIL Compact Bold"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

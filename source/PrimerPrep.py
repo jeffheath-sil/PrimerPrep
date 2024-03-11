@@ -18,6 +18,14 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.28 JCH Mar 2024
+#    Added splash screen on startup, since the startup can be quite slow
+# 3.27 JCH Jan 2024
+#    Use built-in set_do_overwrite_confirmation in chooser, since it seems to work now
+#    If you choose not to overwrite, or project file name is bad, keep the save dialog open with same settings
+# 3.26 JCH Jan 2024
+#    Improved analysis with affixes - words with affixes weren't appearing in the Teaching Order example word list
+#    Added confirmation to quit without saving if there are changes to the data
 # 3.20 JCH Sep 2023-Jan 2024
 #    Sort multigraphs (longest first) when processing, so that shorter don't hide longer
 #    Reworked marking of untaught residue (didn't handle digraphs correctly)
@@ -98,7 +106,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.20"
+progVersion = "3.28"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -117,6 +125,7 @@ from gi import require_version
 require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, Pango
 import os
+import subprocess
 import platform
 import re
 import codecs
@@ -129,7 +138,6 @@ import webbrowser
 #  for internationalization
 import gettext
 import json
-
 
 # global variable to store the program path
 myGlobalProgramPath = ''
@@ -975,7 +983,7 @@ class WordAnalysis:
                             #if double not in self.digraphs:
                                 #self.digraphs.append(double)
         
-        # process the affixes as well, if any; also sets dataChanged to True to force recalculating teaching order
+        # process the affixes as well, if any; also sets teachingOrderChanged to True to force recalculating teaching order
         self.ProcessAffixes()
     
     
@@ -1041,8 +1049,18 @@ class WordAnalysis:
         #
         # Clear all data on teaching order and on how words split into graphemes in this WordAnalysis object.
         #
+        
+        # The morphemes are used to do the teaching order calculation,
+        # but the actual word graphemes must be used to determine the example words
         # wordsAsGraphemes: dict of { word, list of graphemes in word }
         self.wordsAsGraphemes = {}
+        # morphemesAsGraphemes: dict of { morpheme, list of graphemes in morpheme }
+        self.morphemesAsGraphemes = {}
+        # analysisWords: dict of { word, word count in all texts }
+        self.analysisWords = {}
+        # analysisMorphemes: dict of { morpheme, morpheme count in all texts }
+        self.analysisMorphemes = {}
+        
         # graphemeUse: dict of { grapheme, grapheme count in all texts }
         self.graphemeUse = {}
         # teachingOrder: list of graphemes (letters) in order to present in teaching
@@ -1089,9 +1107,9 @@ class WordAnalysis:
         kWordAffixForm = 3
         kWordMarkupForm = 4
         
-        # analysisWords: dict of { word, word count in all texts }
-        self.analysisWords = {}
         for word, word_info in self.words.items():
+            # we need the word as a list of graphemes to determine the example words (morphemes are used for Teaching Order calculations)
+            self.wordsAsGraphemes[word] = re.findall(findGraphemes, word)
             # split into affixes
             affixList = word_info[kWordAffixForm].split(' ')
             for morph in affixList:
@@ -1100,11 +1118,14 @@ class WordAnalysis:
                     # either we aren't excluding affixes, or this isn't an affix
                     if not word_info[kWordExclude]:
                         # store this "word", with its count (adding to existing one if found)
-                        self.analysisWords[morph] = \
-                            self.analysisWords.get(morph, 0) + (word_info[kWordCnt] if countWords else 1)
+                        self.analysisMorphemes[morph] = \
+                            self.analysisMorphemes.get(morph, 0) + (word_info[kWordCnt] if countWords else 1)
                     else:
                         # don't count the graphemes of excluded words, but make sure it's in the word list (with zero count)
-                        self.analysisWords[morph] = 0
+                        self.analysisMorphemes[morph] = 0
+                    # add this morpheme count into the count for the entire word
+                    self.analysisWords[word] = self.analysisWords.get(word, 0) + self.analysisMorphemes[morph]
+                    
                     morphNoHyphen = morph
                     if morphNoHyphen.endswith('-') or morphNoHyphen.startswith('-'):
                         # this is an affix, so remove the hyphen before splitting into graphemes
@@ -1121,7 +1142,7 @@ class WordAnalysis:
                             # just make sure the grapheme is in the graphemeUse dictionary
                             if grapheme not in self.graphemeUse:
                                 self.graphemeUse[grapheme] = 0
-                    self.wordsAsGraphemes[morph] = graphemes
+                    self.morphemesAsGraphemes[morph] = graphemes
         
         teachingOrderAlgorithm = "elimination"
         if teachingOrderAlgorithm == "elimination":
@@ -1132,6 +1153,8 @@ class WordAnalysis:
             graphemeUseCopy = self.graphemeUse.copy()
             # make a copy of the words dictionary, as we will be changing it
             wordsCopy = self.analysisWords.copy()
+            # make a copy of the morphemes dictionary, as we will be changing it
+            morphemesCopy = self.analysisMorphemes.copy()
             # start with an empty teaching order
             self.teachingOrder = []
             while len(graphemeUseCopy) > 0:
@@ -1140,11 +1163,11 @@ class WordAnalysis:
                 for gr in graphemeUseCopy:
                     # find the sum of the frequencies of all the words having this grapheme
                     freq = 0
-                    for word in wordsCopy:
-                        # if this word contains the grapheme, add it to the list
-                        if gr in self.wordsAsGraphemes[word]:
-                            # this word contains the grapheme, add word count (tokens) or just 1 if counting types
-                            freq += wordsCopy[word] if countWords else 1
+                    for morph in morphemesCopy:
+                        # if this morpheme contains the grapheme, add it to the list
+                        if gr in self.morphemesAsGraphemes[morph]:
+                            # this morpheme contains the grapheme, add morpheme count (tokens) or just 1 if counting types
+                            freq += morphemesCopy[morph] if countWords else 1
                     currGraphemeFreq[gr] = freq
                 # find min value of currGraphemeFreq, introduce as last grapheme
                 # (if there is more than one with same count, it will choose one "randomly")
@@ -1152,7 +1175,8 @@ class WordAnalysis:
                 if graphemeUseCopy[last] > 0:
                     # only add to teaching order if it is counted
                     self.teachingOrder.insert(0, last)
-                # build a dictionary of words (with counts) that use this grapheme
+                
+                # build a dictionary of example words (with counts) that use this grapheme
                 wordsWithGrapheme = {}
                 for word in wordsCopy:
                     # if this word contains the grapheme, add it to the list
@@ -1162,6 +1186,16 @@ class WordAnalysis:
                 # (those words are excluded because the infrequent grapheme it contains hasn't been introduced yet)
                 for word in wordsWithGrapheme:
                     del wordsCopy[word]
+                    # delete the morphemes from this word
+                    affixList = self.words[word][kWordAffixForm].split(' ')
+                    for morph in affixList:
+                        morphNoHyphen = morph
+                        if morphNoHyphen.endswith('-') or morphNoHyphen.startswith('-'):
+                            # this is an affix, so remove the hyphen before splitting into graphemes
+                            morphNoHyphen = morphNoHyphen.replace('-', '')
+                        # this mopheme may have already been deleted in another word, so don't fail if it's not there
+                        if morphNoHyphen in morphemesCopy:
+                            del morphemesCopy[morphNoHyphen]
                 # store the list of example words for this grapheme, in decreasing order of use
                 self.graphemeExampleWords[last] = sorted(wordsWithGrapheme, key=wordsWithGrapheme.get, reverse=True)
                 # remove this grapheme from the dictionary and repeat the process
@@ -1174,7 +1208,7 @@ class WordAnalysis:
             self.StoreTeachingOrderBuildExampleWordsLists(graphemeList)
         
         # reset flag for recording a change to the data
-        self.dataChanged = False
+        self.teachingOrderChanged = False
     
     def StoreTeachingOrderBuildExampleWordsLists(self, graphemeList):
         '''Store the given list as the teaching order, starting with the last item
@@ -1193,7 +1227,7 @@ class WordAnalysis:
             self.teachingOrder.insert(0, last)
             # if this is a sight word lesson, don't need to do any of this
             if not isinstance(last, int):
-                # build a dictionary of words (with counts) that use this grapheme
+                # build a dictionary of example words (with counts) that use this grapheme
                 wordsWithGrapheme = {}
                 for word in wordsCopy:
                     # if this word contains the grapheme, add it to the list
@@ -1463,6 +1497,7 @@ class WordAnalysis:
         
         # make sure we recalculate the teaching order when we display it
         self.dataChanged = True
+        self.teachingOrderChanged = True
 
 
     def RunAffixesDialog(self):
@@ -1586,6 +1621,7 @@ class WordAnalysis:
         # if the list changed, make sure we recalculate the teaching order when we display it
         if (self.digraphs != saveDigraphs):
             self.dataChanged = True
+            self.teachingOrderChanged = True
     
     def RunWordEditDialog(self, widget, row):
         '''Ask user to edit the affix breaks, show a concordance of the selected word.
@@ -1640,6 +1676,7 @@ class WordAnalysis:
                     
                     # make sure we recalculate the teaching order when we display it
                     self.dataChanged = True
+                    self.teachingOrderChanged = True
                 else:
                     # collect text in entry field
                     text = myGlobalWindow.theWordEditDialog.divideBuffer.get_text(
@@ -1737,6 +1774,7 @@ than the original word '{}'. Are you sure it is correct?""").format(' '.join(mor
                             
                             # make sure we recalculate the teaching order when we display it
                             self.dataChanged = True
+                            self.teachingOrderChanged = True
                         else:
                             # did not pass validity test, inform the user to correct the data
                             title = _("Invalid entry")
@@ -1940,7 +1978,10 @@ Please try again.""")
         self.sfmIgnoreLines = 'id|rem|restore|h|toc1|toc2|toc3'
         self.sfmProcessLines = ''
         
+        # flag for if the data changed
         self.dataChanged = False
+        # flag for if the Teaching Order needs to be rebuilt (similar but not identical to the above)
+        self.teachingOrderChanged = False
 
 
 
@@ -1981,7 +2022,24 @@ class GtkBuilder(Gtk.Builder):
 
 
 class Handler:
-    def on_mainWindow_destroy(self, *args):
+    def on_mainWindow_delete_event(self, *args):
+        self.quit_confirmation_dialog()
+        # if we returned, then we shouldn't quit
+        return True
+    
+    def on_quitMenuItem_activate(self, *args):
+        self.quit_confirmation_dialog()
+    
+    def quit_confirmation_dialog(self):
+        global myGlobalWindow
+        if myGlobalWindow.analysis.dataChanged:
+            # confirm overwriting it
+            title = _("Confirm quit")
+            msg = _("There is unsaved data. Quit anyway?")
+            if not SimpleYNQuestion(title, 'dialog-warning', msg):
+                # no, we shouldn't quit
+                return
+        # either data hasn't changed or user confirmed to quit anyway
         Gtk.main_quit()
     
     def on_saveProjectMenuItem_activate(self, *args):
@@ -2004,7 +2062,7 @@ class Handler:
         chooser.set_transient_for(myGlobalWindow.window)
         chooser.set_current_name(_("TeachingOrder.txt"))
         chooser.set_current_folder(myGlobalPath)
-        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_do_overwrite_confirmation(True)
         chooser.set_default_response(Gtk.ResponseType.OK)
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
@@ -2026,7 +2084,7 @@ class Handler:
         chooser.set_transient_for(myGlobalWindow.window)
         chooser.set_current_name(_("WordList.txt"))
         chooser.set_current_folder(myGlobalPath)
-        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_do_overwrite_confirmation(True)
         chooser.set_default_response(Gtk.ResponseType.OK)
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
@@ -2037,6 +2095,7 @@ class Handler:
             kWordAffixForm = 3
             kWordMarkupForm = 4
             
+            # save the higher frequency words first
             for word in sorted(myGlobalWindow.analysis.words, key=myGlobalWindow.analysis.words.get, reverse=True):
                 word_info = myGlobalWindow.analysis.words[word]
                 if len(myGlobalWindow.analysis.affixes) == 0:
@@ -2173,6 +2232,7 @@ introducing the letters in a primer.""")
         global myGlobalConfig
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
+        myGlobalWindow.analysis.teachingOrderChanged = True
         # update config object and save
         myGlobalConfig['Option']['excludeaffixes'] = '1' if myGlobalBuilder.get_object('affixesExcludedRadioButton').get_active() else '0'
         SaveConfig()
@@ -2196,6 +2256,7 @@ introducing the letters in a primer.""")
         global myGlobalConfig
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
+        myGlobalWindow.analysis.teachingOrderChanged = True
         # update config object and save
         myGlobalConfig['Option']['countallwords'] = '1' if myGlobalBuilder.get_object('countWordEachTimeRadioButton').get_active() else '0'
         SaveConfig()
@@ -2238,6 +2299,7 @@ verify that all of your digraphs are correct.""")
         
         # make sure that we recalculate the teaching order
         myGlobalWindow.analysis.dataChanged = True
+        myGlobalWindow.analysis.teachingOrderChanged = True
         
         # rebuild the character lists, since they could be different now
         myGlobalWindow.analysis.chars = {' ': 1, '\xa0': 1}
@@ -2277,6 +2339,7 @@ verify that all of your digraphs are correct.""")
             myGlobalWindow.teachingOrderListStore.insert(idx, ['\u2686\u2686', '', '  '.join(sightWordList), swIdx])
             # select equivalent row in teaching order
             myGlobalWindow.teachingOrderTreeView.get_selection().select_path(path)
+            myGlobalWindow.analysis.dataChanged = True
     
     def on_removeSightWordsButton_clicked(self, button):
         '''Remove a line of sight words from the teaching order.'''
@@ -2302,6 +2365,7 @@ verify that all of your digraphs are correct.""")
                 for rw in myGlobalWindow.teachingOrderListStore:
                     if rw[3] > swIdx:
                         rw[3] -= 1
+                myGlobalWindow.analysis.dataChanged = True
             else:
                 logger.error("Tried to remove a sight word lesson that was not a sight word lesson")
     
@@ -2325,6 +2389,7 @@ verify that all of your digraphs are correct.""")
         '''
         myGlobalWindow.analysis.TeachingOrderModified(myGlobalWindow.teachingOrderListStore)
         myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
+        myGlobalWindow.analysis.dataChanged = True
         
         # find letter and select that row in the new teaching order
         for row in myGlobalWindow.teachingOrderListStore:
@@ -2386,7 +2451,9 @@ verify that all of your digraphs are correct.""")
         myGlobalWindow.lessonTextsTextBuffer.place_cursor(myGlobalWindow.lessonTextsTextBuffer.get_end_iter())
     
     def on_lessonTextsTextBuffer_changed(self, widget, data=None):
+        global myGlobalWindow
         myGlobalWindow.MarkUntaught(widget)
+        myGlobalWindow.analysis.dataChanged = True
     
     def on_notebook_switch_page(self, notebook, tab, index):
         '''User has moved to a different tab (page) in the notebook interface.
@@ -2404,7 +2471,7 @@ verify that all of your digraphs are correct.""")
                 textBuffer.emit("changed")
             if myGlobalNotebookPage == 0 and index >= 1:
                 # moving from word discovery to a page where we need to display the teaching order
-                if myGlobalWindow.analysis.dataChanged:
+                if myGlobalWindow.analysis.teachingOrderChanged:
                     # if data has changed, calculate a new teaching order
                     myGlobalWindow.analysis.CalculateTeachingOrder(myGlobalWindow.affixesExcluded.get_active(),
                                                                    myGlobalWindow.countEachWord.get_active())
@@ -2444,39 +2511,26 @@ class PrimerPrepWindow:
       lessonTextsTreeView - TreeView object, displays teaching order for the Lesson Texts tab
     '''
     
-    def ConfirmFileWrite(self, filename):
-        # there seems to be a problem with set_do_overwrite_confirmation in the FileChooserDialog
-        # so do the confirmation manually
-        global myGlobalInterface
-        if not os.path.exists(filename):
-            return True
-        # this file already exists, so confirm overwriting it
-        title = _("Confirm overwrite")
-        msg = _("That file already exists. Overwrite it?")
-        if SimpleYNQuestion(title, 'dialog-warning', msg):
-            return True
-        return False
-    
     def WriteFile(self, filename, filetext):
         '''Internal class routine for writing the given text to the given file.
-        It gracefully handles a pre-existing file and an error writing the file.
+        The check for a pre-existing file will have been done before calling this method.
+        User will be notified of any errors in writing the file.
         
         Parameters: filename (str) - full file name/path
                     filetext (str) - multiline string of contents of file to write
         '''
         global myGlobalInterface
-        if self.ConfirmFileWrite(filename):
-            #logger.debug('Saving as:', filename)
-            try:
-                save_file = open(filename, 'w', encoding='utf-8')
-                # write a byte-order mark (BOM) for better file identification
-                save_file.write('\ufeff')
-                save_file.write(filetext)
-                save_file.close()
-            except Exception:
-                title = _("Error")
-                msg = _("Error. File could not be written.")
-                SimpleMessage(title, 'dialog-error', msg)
+        #logger.debug('Saving as:', filename)
+        try:
+            save_file = open(filename, 'w', encoding='utf-8')
+            # write a byte-order mark (BOM) for better file identification
+            save_file.write('\ufeff')
+            save_file.write(filetext)
+            save_file.close()
+        except Exception:
+            title = _("Error")
+            msg = _("Error. File could not be written.")
+            SimpleMessage(title, 'dialog-error', msg)
     
     def SaveProject(self):
         '''Save the project configuration, allowing restoring and continuing work later.
@@ -2496,37 +2550,38 @@ class PrimerPrepWindow:
                             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_current_name(_("project.ppdata"))
         chooser.set_current_folder(myGlobalPath)
-        #chooser.set_do_overwrite_confirmation(True)
+        chooser.set_do_overwrite_confirmation(True)
         chooser.set_default_response(Gtk.ResponseType.OK)
         filter = Gtk.FileFilter()
         filter.set_name(_("PrimerPrep project files"))
         filter.add_pattern("*.ppdata")
         chooser.add_filter(filter)
         
-        if chooser.run() == Gtk.ResponseType.OK:
+        while chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             if not filename.endswith(".ppdata"):
                 # invalid file name - it must have a .ppdata extenstion at the end
                 title = _("Error")
                 msg = _("You must use a file name extension of .ppdata for your project.")
                 SimpleMessage(title, "dialog-error", msg)
-                chooser.destroy()
-                return
-            if self.ConfirmFileWrite(filename):
-                # save all of the important data structures to the file, serializing them with pickle
-                with open(filename, 'wb') as f:
-                    # make sure current lesson text is saved
-                    self.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
-                    self.analysis.selectedGrapheme = None
-                    
-                    # save all of the data into this project backup file
-                    pickle.dump(dataModelVersion, f)
-                    pickle.dump(self.analysis, f)
-                    options = (myGlobalRenderer.fontName, self.affixesExcluded.get_active(),
-                               self.countEachWord.get_active())
-                    pickle.dump(options, f)
+                #chooser.destroy()
+                continue
+            # save all of the important data structures to the file, serializing them with pickle
+            self.analysis.dataChanged = False
+            with open(filename, 'wb') as f:
+                # make sure current lesson text is saved
+                self.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
+                self.analysis.selectedGrapheme = None
+                
+                # save all of the data into this project backup file
+                pickle.dump(dataModelVersion, f)
+                pickle.dump(self.analysis, f)
+                options = (myGlobalRenderer.fontName, self.affixesExcluded.get_active(),
+                           self.countEachWord.get_active())
+                pickle.dump(options, f)
             # save this path for next time we need to write out a file
             myGlobalPath = os.path.dirname(filename)
+            break
         chooser.destroy()
     
     def LoadProject(self):
@@ -2591,8 +2646,12 @@ class PrimerPrepWindow:
                         else:
                             menu.set_sensitive(False)
                             
-                        # make sure we don't wipe out the data we just loaded
+                        # there are no changes (so you can quit without confirmation)
+                        # but note that teachingOrderChanged could be true, so a rebuild will be necessary
                         self.analysis.dataChanged = False
+                        
+                        # because teaching order rebuild may be necessary, good to start on first notebook tab
+                        self.mainNB.set_current_page(0)
         chooser.destroy()
     
     def AddTexts(self):
@@ -2743,7 +2802,7 @@ class PrimerPrepWindow:
             endWordPos = pos + wordLength
             if nextWord in sightWords:
                 #print("INFO: taught sightword ({}-{})".format(pos, endWordPos))
-                # since we were already in (taught) wordbreak characters, 
+                # we were already in (taught) wordbreak characters, so just continue
                 pos = endWordPos
                 continue
             # not a sightword, so just process the graphemes in this word one by one
@@ -2960,6 +3019,7 @@ class PrimerPrepWindow:
         
         # keep track of some builder UI objects
         self.window = myGlobalBuilder.get_object("mainWindow")
+        self.mainNB = myGlobalBuilder.get_object("mainNB")
         self.affixList = myGlobalBuilder.get_object("affixList")
         self.affixesExcluded = myGlobalBuilder.get_object("affixesExcludedRadioButton")
         self.countEachWord = myGlobalBuilder.get_object("countWordEachTimeRadioButton")
@@ -3008,6 +3068,7 @@ class PrimerPrepWindow:
         
         self.window.set_default_direction(Gtk.TextDirection.LTR)
         self.isRTL = False
+        #self.window.connect("delete-event", Handler.on_mainWindow_delete_event)
         
         # show the main PrimerPrep window
         self.window.show_all()
@@ -3029,13 +3090,13 @@ class PrimerPrepWindow:
         teachingOrderSelection = self.teachingOrderTreeView.get_selection()
         teachingOrderSelection.connect("changed", Handler.on_teachingOrderTreeView_change)
         
-        # need a special handler for the letter column (in teaching order and lesson texts) to set font for sightwords symbol
-        self.teachingOrderLetterColumn.set_cell_data_func(self.teachingOrderLetterCellRenderer, self.letter_cell_data_func)
-        self.lessonTextsLetterColumn.set_cell_data_func(self.lessonTextsLetterCellRenderer, self.letter_cell_data_func)
-        
         # when a row of the lesson texts treeview is selected, it emits a signal
         lessonTextSelection = self.lessonTextsTreeView.get_selection()
         lessonTextSelection.connect("changed", Handler.on_lessonTextsTreeView_change)
+        
+        # need a special handler for the letter column (in teaching order and lesson texts) to set font for sightwords symbol
+        self.teachingOrderLetterColumn.set_cell_data_func(self.teachingOrderLetterCellRenderer, self.letter_cell_data_func)
+        self.lessonTextsLetterColumn.set_cell_data_func(self.lessonTextsLetterCellRenderer, self.letter_cell_data_func)
         
         # set up a tag for untaught residue
         textBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
@@ -3061,6 +3122,14 @@ if __name__ == "__main__":
     if platform.system() == "Windows":
         #  for Windows, add Documents to the default path
         myGlobalPath = os.path.join(myGlobalPath, 'Documents')
+    
+    # display a splash screen, especially since the opening of the initial window can take some time
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        splashScreen = None
+        #cmds = [os.path.join(sys._MEIPASS, 'PrimerPrepSplash')]
+    else:
+        cmds = ["python", os.path.join(myGlobalProgramPath, "PrimerPrepSplash.py")]
+        splashScreen = subprocess.Popen(cmds)
     
     # make sure we have our default English translation set up
     locale_path = os.path.join(myGlobalProgramPath, 'po')
@@ -3141,6 +3210,12 @@ if __name__ == "__main__":
                                     'separatecombdia' : '0'}
         # create the .ini file
         SaveConfig()
-        
     
+    # just starting so nothing changed yet
+    myGlobalWindow.analysis.dataChanged = False
+    myGlobalWindow.analysis.teachingOrderChanged = False
+    
+    # we are done stalling for time
+    if splashScreen:
+        splashScreen.terminate()
     Gtk.main()
