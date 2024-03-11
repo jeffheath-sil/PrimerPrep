@@ -1,0 +1,163 @@
+<html lang="fr">
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<!-- Help file for PrimerPrep -->
+<title>Aide de PrimerPrep</title>
+</head>
+
+<body>
+<div style="margin:10px; padding-left:20; padding-right:20; border:solid; float:right">
+<h3>Table des matières</h3>
+<!--ul style="list-style:none"-->
+<ul>
+<li><a href="#intro">Introduction à PrimerPrep</a>
+<li><a href="#initial_steps">Premiers pas avec PrimerPrep</a>
+<li><a href="#adding_texts">Ajouter plus de textes à votre analyse </a>
+<li><a href="#word_discovery">Découverte de mots</a>
+<ul>
+<li><a href="#config_lang">Configurer la langue </a>
+<li><a href="#edit_affix">Editer Affixes</a>
+<li><a href="#word_count">Comptage de mots</a>
+</ul>
+<li><a href="#teaching_order">Ordre d’enseignement</a>
+<ul>
+<li><a href="#modify_teaching_order">Modifier l’ordre d’enseignement </a>
+<li><a href="#suggest_phrases">Suggérer des phrases et envisager la prochaine lettre à enseigner </a>
+<li><a href="#sight_words">Ajouter et supprimer des mots à vue</a>
+</ul>
+<li><a href="#lesson_texts">Textes de leçon</a>
+<li><a href="#return_word_discovery">Retour à la découverte de mots</a>
+<li><a href="#menus">Menus</a>
+<li><a href="#contact">Coordonnées</a>
+</ul>
+</div>
+<p>Traduction préliminaire avec l’aide de <a href="https://www.DeepL.com/Translator">https://www.DeepL.com/Translator</a><br>
+(Les captures d’écran sont toujours avec l’interface en anglais.)</p>
+<h3 id="intro">Introduction à PrimerPrep</h3>
+<p>Le logiciel PrimerPrep est conçu pour vous aider à :</p>
+<ul>
+<li><strong>analyser des textes dans une langue </strong> pour découvrir les mots et les lettres utilisés dans la langue, et leur fréquence d’apparition</li>
+<li>préciser ce qu’il faut analyser, en sélectionnant les mots à analyser, comment les compter, et comment les décomposer (avec les affixes)</li>
+<li><strong>fournir un ordre d’enseignement suggéré</strong>, c’est-à-dire l’ordre dans lequel ces lettres pourraient être introduites dans un abécédaire, et vous montrer quels mots de vos textes sont disponibles dans chaque leçon</li>
+<li><strong>modifier l’ordre des lettres</strong> dans l'ordre d'enseignement, et <strong>ajouter des mots à vue</strong></li>
+<li>analyser votre texte pour chaque leçon et <strong>marquer les résidus non appris en rouge</strong>, pour attirer votre attention.</li>
+</ul>
+
+<h3 id="initial_steps">Premiers pas avec PrimerPrep</h3>
+<p><em>N.B.: Parfois le logiciel traine un peu en démarrant ou en ouvrant un dialogue de fichier. Ce problème vient du système graphique utilisé. Soyez patient. Normalement ces opérations sont plus vite la deuxième fois.</em></p>
+<p>À un niveau de base, le logiciel PrimerPrep est très simple à utiliser. Sélectionnez simplement le bouton Ajouter texte(s) à partir de l’écran de démarrage (1) :</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepWordDiscovery.png" alt="Word Discovery tab">
+<p>Dans la boîte de dialogue qui apparaît, naviguez pour sélectionner un fichier texte dans la langue que vous voulez analyser, puis cliquez sur Ouvrir. PrimerPrep analyse les mots du fichier, prépare une liste de mots et les place dans le volet droit de la fenêtre (2), classés par ordre décroissant de fréquence. Si vous n'avez pas de besoins particuliers en matière d'analyse, il vous suffit de cliquer sur l’onglet Ordre d'enseignement (3) et d'afficher vos résultats :</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepTeachingOrder.png" alt="Teaching Order tab">
+<p>PrimerPrep a calculé l'ordre d'enseignement optimal, en utilisant l'algorithme d'élimination 
+<a href="#footnote1" id="fnanchor1"><sup>1</sup></a>, et le présente comme une liste de lettres (10) avec leurs fréquences. (Notez que vous pouvez facilement modifier l’ordre d'enseignement suggéré ; voir <a href="#modify_teaching_order">Modifying the Teaching Order</a> ci-dessous.) Les exemples de mots montrés (11) sont simplement les mots trouvés dans vos fichiers texte qui sont disponibles à ce point dans l'ordre d'enseignement (formés de lettres de ce niveau ou plus dans l'ordre d'enseignement). Par exemple, dans la leçon pour la lettre “w”, le mot “<strong>awwal</strong>” peut être utilisé dans vos textes parce que toutes les lettres qui la composent ont été enseignées par ce point. L'ampleur des exemples de mots présentés dépend de la taille et de l’ampleur du ou des textes que vous avez choisis pour analyser.</p>
+
+
+<h3 id="adding_texts">Ajouter plus de textes à votre analyse</h3>
+<p>Pour ajouter plus d’ampleur à votre analyse, vous aurez besoin de <strong>ajouter plus de textes</strong>. Pour ce faire, revenez à l’onglet Découverte de mots en cliquant sur cet onglet (12) en haut de la fenêtre (vous pouvez ignorer le message d’avertissement qu'il donne pour le moment), cliquez à nouveau sur le bouton Ajouter texte(s) (1) et sélectionnez textes supplémentaires. Les textes actuellement chargés sont affichés dans la liste des noms de fichiers (4).</p>
+<p><strong>Quels types de textes faut-il ajouter ? </strong> Généralement, il est préférable d’utiliser des textes très naturels dans la langue, comme des histoires traditionnelles. Évitez les textes techniques ou les textes qui ont été traduits (comme les Écritures). Si vous utilisez plusieurs textes, ils devraient être dans un registre et un dialecte similaires (et certainement dans la même langue !) pour obtenir des résultats utiles du logiciel.</p>
+<p>Il faut noter ici que le programme s'attend à ce que les fichiers texte d'entrée <strong>input soient en Unicode</strong>, en particulier en <strong>UTF-8 codage</strong>. Si vous ne connaissez pas l’encodage d’un fichier texte, ouvrez le fichier avec Notepad puis sélectionnez Enregistrer sous... dans le menu Fichier. Un champ au bas de la boîte de dialogue Enregistrer sous vous montrera l'encodage actuel. Si ce n'est pas UTF-8, sélectionnez UTF-8 dans le menu déroulant de ce champ et enregistrez le fichier, en écrasant le fichier précédent ou en lui donnant un nouveau nom.</p>
+<p>Il faut également noter que le programme essaie de traiter intelligemment les textes marqués avec des marqueurs de format standard (SFMs)</strong>. Lorsque PrimerPrep charge un fichier, s'il trouve qu'il y a un certain nombre de lignes dans les premières lignes qui commencent par le caractère “\\” (c'est ainsi que les SFMs sont marqués), alors il vous présentera une boîte de dialogue spéciale qui vous montre la première partie du fichier et vous demande comment vous voulez gérer les SFMs. Vous pouvez choisir de les ignorer, de les traiter comme du texte normal, ou de les traiter, de les supprimer du texte. Dans ce dernier cas, vous pouvez spécifier certains GDF à exclure (ces GDF seront traités comme des commentaires ; vous devriez le faire par exemple avec des GDF qui pourraient être dans une langue différente), ou vous pouvez spécifier certains GDF qui sont les SEULS pour lesquels les données seront chargées.</p>
+
+<h3 id="word_discovery">Découverte de mots</h3>
+<p>Le logiciel PrimerPrep décompose automatiquement les textes d’entrée en mots séparés, en utilisant l’espace blanc et la ponctuation comme séparateurs <a href="#footnote2" id="fnanchor2"><sup>2</sup></a>. Il divise également les mots en lettres séparées, en traitant parfois deux ou plusieurs lettres ensemble, comme un digraphe ou un multigraphe (nous en reparlerons plus loin). Puis, avec ces données, le programme utilise ces mots et ces lettres pour calculer l'ordre d'enseignement. Mais les exigences varient selon les spécialistes de l'alphabétisation quant à la façon dont ces calculs sont effectués, de sorte que le programme offre différentes options qui pourraient être utiles pour découvrir quels mots devraient être analysés, et comment ils devraient l’être.</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepWordDiscoveryAdvanced.png" alt="Word Discovery tab">
+
+<h4 id="config_lang">Configurer la langue </h4>
+<p>Premièrement, nous allons considérer comment nous pouvons configurer la langue (5), avec les deux boutons et la case à cocher dans cette section:</p>
+<ul>
+<li>PrimerPrep utilise les propriétés des caractères Unicode standard de l'industrie pour déterminer si les caractères forment ou cassent des mots <a href="#footnote2"><sup>2</sup></a>. Pour modifier ce comportement par défaut, cliquez sur le bouton <strong>Caractères casseurs de mots</strong> (5). Vous verrez la boîte de dialogue ci-dessous, avec deux colonnes de lettres. Si vous voulez changer la catégorie d'une lettre (de la casse à la formation de mots, ou vice versa), double-cliquez dessus pour la déplacer dans l'autre colonne. Par exemple, vous pourriez double-cliquer sur le caractère de trait d'union pour le déplacer dans la colonne Formation des mots, et PrimerPrep considérerait alors un mot avec un trait d'union au milieu comme un mot contigu. Cliquez sur OK pour fermer la boîte de dialogue, et si vous avez apporté des modifications, PrimerPrep vous rappelle que toutes les données seront retraitées. Le caractère espace est toujours considéré comme un caractère casse-mots, mais n'apparaît pas dans la liste.<br>
+<img style="margin:5px;" width=334 src="PrimerPrepWordBreak.png" alt="Word Break dialog">
+
+<li>Cliquez sur le bouton <strong>Digraphs</strong>(5) pour afficher le dialogue Digraphs. Editez le texte dans cette boîte de dialogue avec les digraphes dans votre langue (deux caractères ou plus qui sont traités comme une seule lettre dans l'orthographe), en mettant des espaces entre eux pour les séparer:<br>
+<img style="margin:5px;" width=475 src="PrimerPrepDigraph.png" alt="Digraph dialog"><br>
+Dans cet exemple, les digraphes ont été ajoutés automatiquement à la liste des digraphes parce que l'option <strong>Auto-Recherche des digraphes</strong> a été sélectionnée dans le menu Configuration (voir ci-dessous). Mais &laquo;th&laquo; et &laquo;sh&raquo; ne sont pas vraiment des digraphes dans cette langue, nous allons donc éditer la liste et les supprimer, en ne laissant que le texte &laquo;kh ch&raquo; dans la boîte de dialogue. Cliquez sur OK pour fermer la boîte de dialogue, et comme il y a eu des changements, PrimerPrep vous rappelle que toutes les données seront retraitées.<br>
+<img style="margin:5px;" width=439 src="PrimerPrepConfigureMenu.png" alt="Digraph Auto-Search menu"><br>
+Une fois que vous avez édité la liste des digraphes dans votre langue, vous souhaitez probablement désactiver l'option <strong>Auto-Recherche des digraphes</strong> dans le menu Configurer, afin que l’ajout d’autres textes ne modifie pas votre liste.
+
+<li>Cliquez sur la case à cocher étiquetée <strong>Traiter les diacritiques combinés séparément </strong> (5) si vous voulez que les diacritiques combinés soient considérés comme des caractères séparés dans l'analyse. La valeur par défaut est d'inclure une combinaison diacritique avec son caractère de base précédent, par exemple “a” suivi de <tt>U+0301 Combining Acute Accent</tt> ◌́ apparaît comme un seul caractère “á” PrimerPrep le traite donc comme un caractère unique. Mais si vous utilisez la combinaison de signes diacritiques comme ton dans la langue, vous voudrez peut-être traiter ces caractères séparément. Cochez cette case pour que la combinaison de caractères diacritiques apparaisse comme caractères séparés dans l'ordre d'enseignement.
+</ul>
+
+<h4 id="edit_affix">Modifier Affixes </h4>
+<p>Vous pouvez également définir des appuis, que PrimerPrep séparera des mots dans la liste de mots. Définissez ces affixes en cliquant sur le bouton Modifier les affixes (6). Editez le texte dans cette boîte de dialogue avec les affixes dans votre langue, en mettant des espaces entre eux pour les séparer:</p>
+<img style="margin-left:3em;" width=475 src="PrimerPrepAffix.png" alt="Affix dialog">
+<p>>S'assurer que chaque affixe commence par un tiret (pour les suffixes) ou se termine par un tiret (pour les préfixes). PrimerPrep est très strict sur cette exigence, et ne vous permettra pas de cliquer sur OK si vous n’avez pas correctement défini les affixes. Si vous ne trouvez pas l'erreur qui vous empêche de fermer la boîte de dialogue, cliquez sur Annuler et essayez à nouveau. Une fois que vous avez défini vos affixes, PrimerPrep met à jour la liste de mots et marque les affixes en gris. (Voir la capture d'écran ci-dessous.)</p>
+<p>PrimerPrep ne fait que marquer aveuglément les affixes qui lui sont donnés sur chaque mot de la liste. Mais parfois un mot a l'air d'avoir un affixe (commence ou finit par la bonne séquence de lettres), mais ces lettres font en fait partie de la racine. Dans ce cas, vous pouvez éditer manuellement les appositions d'un mot particulier, en double-cliquant sur le mot dans la liste de mots. Vous pouvez utiliser la case Filtre juste au-dessus de la liste de mots (8) pour trouver rapidement des mots avec une chaîne commune, comme l'affixe “-iin”. (Notez que ce filtre trouvera tout mot qui contient la chaîne “iin&rdquo ;, pas seulement les suffixes.)</p>
+<img style="margin-left:3em;" width=290 src="PrimerPrepFilter.png" alt="Word list filter">
+<p>Pour certains des mots de cette liste, le “iin” fait partie de la racine, et n’est pas du tout un suffixe. Par exemple, le mot “awiin” est une racine dans la langue, c'est-à-dire qu'il n'a pas d'affixes. Pour corriger cette surgénéralisation, double-cliquez sur le mot &laquo;awiin&raquo; dans la liste de mots:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepWordAnalysis.png" alt="Word analysis dialog">
+<p>PrimerPrep affiche une concordance du mot dans son contexte (17). Il vous indique également la division actuelle du mot (18) ; vous pouvez éditer manuellement les divisions d'apposition dans cette zone de texte. Dans ce cas, on supprimerait l'espace et le trait d'union pour faire le texte sans pauses d'apposition, pour indiquer que ce mot ne contient qu'une seule racine. S'il s'agit d'un mot que vous voulez exclure de l'analyse de l'ordre d'enseignement, cochez simplement la case <strong>Exclure ce mot de l'analyse</strong> (19). Par exemple, vous pouvez vouloir exclure les foncteurs de la langue (mots de fonction, souvent des mots grammaticaux avec peu de signification lexicale) du calcul de l'ordre d'enseignement. Notez cependant que l'exclusion des mots du calcul <forte>ne les exclut pas </forte>de la liste des exemples de mots (dans l'ordre d'enseignement). Il s’agit toujours de mots valides que vous pouvez utiliser dans vos textes de cours, il est donc utile de vous rappeler leur disponibilité lorsque toutes les lettres d’un mot ont été introduites.</p>
+<p>Noter qu'il y a une option supplémentaire pour les affixes. PrimerPrep a la possibilité d'exclure les affixes du calcul de l'ordre d'enseignement <strong>ou</strong> de les compter comme mots séparés. Ceci est contrôlé par les deux boutons à bascule (7). S'ils sont comptés comme mots séparés, les affixes eux-mêmes apparaîtront également dans les listes de mots d'exemple.</p>
+
+<h4 id="word_count">Comptage de mots</h4>
+<p>La méthode finale pour affecter le calcul de l'ordre d'enseignement est la définition de la façon de compter les mots que vous avez découverts. Les deux boutons à bascule (9) vous permettent de choisir si un mot est compté <strong>chaque fois qu'il se produit </strong> (c'est-à-dire comme jetons) ou <strong>une seule fois</strong> (c'est-à-dire comme types). Ce choix aura un impact significatif sur le calcul de l'ordre d'enseignement, car vous déterminez le poids des mots communs : Voulez-vous compter leurs lettres constitutives autant de fois que le mot apparaît, ou seulement une fois ?</p>
+<p>Notez que si les affixes sont exclus, ils n'apparaîtront pas dans les mots d'exemple dans l'ordre d'enseignement. Les mots apparaîtront dans ces listes avec les affixes coupés en morceaux. Dans le cas de <strong>aw -iin</strong> ci-dessus, si nous n'enlevions pas l'affixe, il apparaîtrait simplement comme <strong>aw</strong> dans l'exemple de liste de mots. Ainsi, si vous voyez des mots dans les listes de mots de l’exemple, il s’agit probablement de mots dont les affixes ont été coupés, ce qui peut indiquer la nécessité de modifier davantage les pauses d’affixe de mots individuels dans la liste de mots.</p>
+
+
+<h3 id="teaching_order">Ordre d’enseignement</h3>
+<p>Une fois que vous avez utilisé l'onglet Découverte de mots pour définir les mots à utiliser dans l'analyse, cliquez sur l'onglet Ordre d'enseignement (3) pour calculer et présenter l'ordre d'enseignement proposé. Notez que maintenant l'ordre d'enseignement inclut quelques affixes, car nous avons séparé les affixes pendant la découverte des mots:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepTeachingOrderAdvanced.png" alt="Teaching Order tab">
+
+<h4 id="modify_teaching_order">Modifier l’ordre d’enseignement</h4>
+<p>Bien que l'ordre d'enseignement donné soit l'ordre d'enseignement "optimal", selon l'algorithme d'élimination <a href="#footnote1"><sup>1</sup></a>, vous voudrez probablement effectuer quelques ajustements. Par exemple, les spécialistes de l'alphabétisation disent qu'il ne faut pas introduire deux lettres similaires juste à côté l'une de l'autre ; ainsi, introduire "b" et "d", ou "n" et "u" dans des leçons adjacentes pourrait être source de confusion pour l'apprenant. Si PrimerPrep les a mis l'un à côté de l'autre, vous pouvez les séparer dans la liste d'ordre d'enseignement.</p>
+<p>Une autre raison d'ajuster l'ordre d'enseignement pourrait être de rendre certains mots " imaginables " disponibles dans les leçons précédentes afin qu'ils puissent être utilisés pour vos textes de leçon. Considérons les exemples de mots pour la lettre "u" ci-dessus (14). Il y a plusieurs mots dans cette liste d'exemples de mots qui seraient faciles à exprimer sous forme d'images dans une amorce : <strong>mulaah</strong> <em>sauce</em>, <strong>dalu</strong> <em>seau de puits</em>, et <strong>duud</strong> <em>lion</em>. En regardant de plus près les lettres constitutives de ces mots, toutes pourraient être introduites si la leçon pour "u" était introduite juste après la lettre "d".</p>
+<p>Quelle que soit la raison pour laquelle vous voulez changer l'ordre d'enseignement, PrimerPrep vous facilite la tâche en utilisant un processus connu dans le monde informatique comme le glisser-déposer. Placez le curseur de votre souris sur la ligne de la leçon que vous voulez déplacer, cliquez avec le bouton gauche de la souris et maintenez le bouton enfoncé, faites glisser la souris là où vous voulez placer cette leçon (il y a une ligne qui vous aide à voir où cette leçon sera "déposée"), puis relâchez le bouton pour "déposer" la leçon dans le nouvel endroit. Voici à quoi ressemble l'écran lorsque vous avez cliqué et glissé la leçon pour que "u" soit juste après la leçon pour "d", juste avant de relâcher le bouton de la souris pour déplacer la leçon:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepTeachingOrderDragDrop.png" alt="Teaching Order drag-and-drop">
+<p>Dès que vous relâchez le bouton de la souris, cette lettre sera déplacée vers le nouvel emplacement dans l'ordre d'enseignement, et <strong>la liste des mots exemples est immédiatement mise à jour pour refléter le nouvel ordre d'enseignement!</strong> Si nous regardons la liste des mots exemples pour "u" dans l'ordre d'enseignement actualisé (ci-dessous), les mots <strong>mulaah</strong>, <strong>dalu</strong> et <strong>duud</strong> sont là comme attendu. Mais pourquoi le mot <strong>humman</strong> n'est-il plus dans la liste de mots de l'exemple pour "u", comme il est ci-dessus ? Parce que la lettre "n", l'une de ses lettres constitutives, n'a pas encore été introduite.</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepTeachingOrderDragDropEnd.png" alt="Teaching Order after drag-and-drop">
+<p>Ainsi, lorsque vous glissez-déposez des leçons dans l'ordre d'enseignement, vous ne déposez pas simplement la même liste de mots exemples dans ce nouvel emplacement ; <strong>tous les mots exemples seront recalculés pour le nouvel ordre d'enseignement</strong>. Vous pouvez facilement déplacer les leçons pour voir quels mots différents seront disponibles avec différentes séquences de lettres. Cela pourrait être une façon utile d'étudier différentes possibilités pour l'ordre dans lequel vous introduisez les lettres dans votre abécédaire.</p>
+
+<h4 id="suggest_phrases">Suggesting Phrases and Considering the Next Letter to Teach</h4>
+<p>Une autre façon d'étudier l'ordre d'enseignement consiste à double-cliquer sur une leçon pour afficher les phrases disponibles à un niveau donné dans l'ordre d'enseignement et leur contexte. Par exemple, un double-clic sur la lettre "i" ouvre une boîte de dialogue qui affiche tous les fragments de texte de vos textes chargés qui ne peuvent être produits qu'avec les lettres jusqu'à ce point dans l'ordre d'enseignement (c'est-à-dire qui sont formés de lettres que l'élève doit connaître). Les fragments de texte disponibles sont indiqués dans la colonne du milieu. Les colonnes gauche/droite fournissent le contexte avant/après pour chaque fragment de texte:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepTextFragments.png" alt="Add sight words">
+<p>Ces fragments peuvent inspirer quelques idées de phrases qui pourraient être utiles dans votre abécédaire. De plus, le contexte de ces fragments (les mots avant et après) pourrait vous donner un aperçu des lettres qu'il serait productif de placer ensuite dans l'ordre d'enseignement. Par exemple, les mots avant les deuxième et troisième fragments de texte ci-dessus sont <strong>al-leel</strong> et <strong>hana</strong>. En comparant ces mots avec la liste des lettres qui ont déjà été enseignées, vous pouvez voir que le premier mot serait disponible comme partie d'un fragment si la lettre "e" était ajoutée, et le second serait disponible si la lettre "h" était ajoutée. Donc, si vous avez décidé qu'un de ces mots était particulièrement productif et utile dans vos textes de leçon, vous pourriez envisager de déplacer une de ces lettres plus haut dans l'ordre d'enseignement.</p>
+
+<h4 id="sight_words">Adding and Removing Sight Word Lessons</h4>
+<p>Quel que soit l'ordre dans lequel vous introduisez les lettres, il sera difficile de former des textes intéressants avec seulement les lettres introduites dans les premières leçons. C'est pourquoi de nombreux alphabétiseurs utilisent des "mots à vue"
+<a href="#footnote3" id="fnanchor3"><sup>3</sup></a> dans leurs premières leçons. Ce sont des mots que les élèves apprennent à mémoriser dans leur ensemble, par la vue, pour qu'ils puissent les reconnaître et les lire sans avoir à utiliser des habiletés de décodage.</p>
+<p>Pour ajouter une leçon de mots à vue dans PrimerPrep, sélectionnez l'emplacement dans l'ordre d'enseignement où vous voulez insérer les mots à vue (dans cet exemple nous sélectionnons la leçon pour la lettre "t"), puis cliquez sur le bouton Add Sight Words (13). Dans la boîte de dialogue qui apparaît, entrez le(s) mot(s) visuel(s) que vous voulez introduire à ce stade de l'amorce, puis cliquez sur OK:</p>
+<img style="margin-left:3em;" width=475 src="PrimerPrepAddSightWords.png" alt="Add sight words">
+<p>Les mots de la vue sont ajoutés dans PrimerPrep comme lignes de leçon séparées dans l'ordre d'enseignement (marquées avec deux yeux <img width=26 src="PrimerPrepSightWordsSymbol.png">, pour représenter la vue), mais ils pourraient évidemment être présentés à l'élève dans une leçon d'une lettre adjacente. (D'ailleurs, même si deux lettres sont sur des lignes séparées, elles pourraient être présentées dans la même leçon d'introduction, selon votre méthodologie d'enseignement.) Ainsi, dans l'exemple ci-dessous, il se peut que nous voulions introduire <strong>wileed</strong> <em>boy</em> (16) comme mot de vue dans la leçon qui introduit la lettre "t", la leçon qui suit immédiatement la leçon du mot de vue:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepNewSightWords.png" alt="Sight words">
+<p>Les leçons de mots à vue, une fois créées, sont traitées comme les leçons de lettres dans l'ordre d'enseignement. Vous pouvez ajuster leurs positions dans la liste en utilisant la même opération de glisser-déposer. Mais contrairement aux leçons de lettres, si vous sélectionnez une leçon de mots à vue, le bouton <strong>Remove Sight Words</strong> en bas devient actif, et si vous cliquez sur ce bouton, la leçon de mots à vue sera supprimée. Il n'y a pas d'option d'annulation, mais il est assez facile d'ajouter à nouveau la leçon du mot de vue.</p>
+
+
+<h3 id="lesson_texts">Lesson Texts</h3>
+<p>La dernière caractéristique majeure de PrimerPrep est la possibilité de saisir et de vérifier vos textes de cours à chaque étape de l'enseignement. Cliquez sur l'onglet Textes de leçon (15) pour voir le texte (actuellement vide) de la leçon sélectionnée. Dans ce cas, la leçon pour la lettre "t" était toujours sélectionnée:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepLessonTexts.png" alt="Lesson Texts tab">
+<p>Cliquez dans le champ texte vide et tapez ou collez les lettres, mots et textes que vous proposez de mettre dans cette leçon. Par exemple, vous pourriez avoir de la pratique des syllabes, des exercices de mise en forme des mots et des textes d'exemple, quelque chose comme ce qui suit:</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepLessonTextsNew.png" alt="Lesson Texts example">
+<p>Vous pouvez voir que ces exercices sont tous constitués de lettres qui ont déjà été enseignées, à savoir l, a, w, h et t. Notez, cependant, que le mot <strong>wileed</strong> a des lettres qui n'ont pas encore été enseignées (i et e) <strong>but</strong> ceci est le mot visuel que nous avons introduit juste avant cette leçon (ou comme partie de), il est donc acceptable dans cette leçon. Qu'arrive quand vous ajouter du contenu qui n'a pas déjà été appris ? Il est <strong style="color:red">marqué en rouge comme résidu non enseigné</strong>, comme vu dans cet exemple avec un exemple étendu text.</p>
+<img style="margin-left:3em;" width=765 src="PrimerPrepLessonTextsUntaught.png" alt="Lesson Texts untaught residue">
+<p>PrimerPrep évalue toutes les lettres et tous les mots de la leçon que vous proposez, pour vous assurer que vous êtes au courant de tout <strong style="color:red">résidu non enseigné</strong>, c'est-à-dire des lettres que l'élève ne devrait pas encore connaître.</p>
+
+
+<h3 id="return_word_discovery">Retour à Découverte de mots</h3>
+<p>Vous pouvez revenir à l'onglet Découverte de mots à tout moment en cliquant sur cet onglet en haut de la fenêtre. Mais s'il vous plaît noter que <strong>si vous faites des changements, tout ordre d'enseignement spécialisé que vous avez créé, et toutes les leçons de mots à vue seront perdues </strong>. Il y a un avertissement à cet effet lorsque vous cliquez sur l'onglet Découverte de Word, pour vous rappeler que vous pourriez perdre une partie de votre travail. PrimerPrep essaie de garder vos textes de leçon pour chaque lettre, mais si l'ordre d'enseignement change, vous aurez probablement des résidus non appris dans certains de vos textes. Si vous revenez à l'onglet Ordre d'enseignement ou Textes de leçon sans modifier l'onglet Découverte de mots, vous ne perdrez aucune partie de votre travail.</p>
+<p>Notez également qu'il y a un bouton <strong>Effacer tous les textes</strong> dans l'onglet Découverte de mots. Cela vous permet de repartir de zéro pour votre analyse d'abécédaire.</p>
+
+
+<h3 id="menus">Menus</h3>
+<p>Quelques options supplémentaires sont disponibles dans les menus du logiciel.</p>
+<img style="margin-left:3em;" width=254 src="PrimerPrepFileMenu.png" alt="File menu">
+<p>Le <strong>menu Fichier </strong>a des options pour <strong>sauvegarder et charger un projet </strong>, avec toutes ses données, son ordre d'enseignement, ses leçons de mots à vue et ses textes de leçon. Cela permet de revenir à un point donné de votre analyse de base, sans avoir à recharger les textes, à définir les mots et les affixes, à modifier l'ordre d'enseignement et à ressaisir les textes des leçons.</p>
+<p>Il y a des options dans ce menu pour <strong>sauvegarder l'ordre d'enseignement</strong> ou <strong>sauvegarder la liste de mots</strong>. Dans les deux cas, ils sont sauvegardés sous forme de fichiers texte avec des colonnes séparées par des tabulations. Ceux-ci peuvent être ouverts avec un éditeur de texte comme NotePad, ou avec un tableur comme LibreOffice Calc ou Microsoft Excel.</p>
+<p>Et il y a une option de menu pour <strong>quitter PrimerPrep</strong>, avec un raccourci Ctrl+Q, ou simplement fermer la fenêtre du logiciel.</p>
+<img style="margin-left:3em;" width=439 src="PrimerPrepConfigureMenu.png" alt="Configure menu">
+<p>Le <strong>menu Configuration</strong> a une option pour détecter automatiquement les digraphes (comme expliqué dans <a href="#config_lang">Configurer la langue</a> ci-dessus).</p>
+<p>Il y a aussi une option pour <strong>sélectionner la police du texte</strong>. PrimerPrep utilise par défaut la police &lsquo;Charis SIL Compact&rsquo; pour tous les textes en langue vernaculaire. Il s'agit d'une très bonne police polyvalente pour les langages d'écriture romaine, et peut très bien couvrir tous vos besoins. Cette police est installé avec le logiciel PrimerPrep. <strong>Si vos caractères n'apparaissent pas correctement</strong>, cela signifie probablement que la police 'Charis SIL Compact' n’est plus installée (allez à <a href="http://scripts.sil.org">http://scripts.sil.org</a> pour des instructions sur le téléchargement et l'installation de cette police), ou bien vous pouvez avoir une orthographe en caractères non romains pour votre langue. Dans ce cas, utilisez cette option de menu pour sélectionner une police appropriée pour l'affichage de la langue. Le logiciel PrimerPrep devrait être capable de gérer des scripts de droite à gauche tels que l’arabe ou l’hébreu.</p>
+<p>Ce menu a aussi une option pour <strong>changer l'interface utilisateur </strong> entre anglais et français.</p>
+<img style="margin-left:3em;" width=337 src="PrimerPrepHelpMenu.png" alt="Help menu">
+<p>Et enfin, il y a un <strong>menu Aide</strong> qui peut ouvrir cette page d'<strong>aide</strong>, ou fournir quelques informations <strong>à propos</strong> le logiciel PrimerPrep.</p>
+
+
+<h3 id="contact">Coordonnées</h3>
+<p>Si vous avez des questions ou des commentaires sur ce programme, vous pouvez me contacter à <a href="mailto:jeff_heath@sil.org">jeff_heath@sil.org</a></p>
+
+<br>
+<p id="footnote1"><a href="#fnanchor1"><sup>1</sup></a>Trouvé dans <a href="https://www.sil.org/resources/archives/4934">PRIMER: A tool for developing early reading meterials</a></p>
+<p id="footnote2"><a href="#fnanchor2"><sup>2</sup></a>PrimerPrep utilise la base de données de caractères <a href="https://www.unicode.org/reports/tr44/">Unicode Character Database</a> pour déterminer si une lettre doit être considérée comme une lettre qui casse ou forme un mot. Vous pouvez rechercher une lettre par code ou par nom dans la liste <a href="https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt">UnicodeData list</a>, dont le format est décrit dans le <a href="ftp://unicode.org/Public/3.0-Update/UnicodeData-3.0.0.html">Unicode File Format</a>. La troisième "colonne" (après la valeur du code et le nom du caractère) donne la catégorie générale du caractère. Si la catégorie commence par "L" (lettre) ou "M" (marque combinée), la lettre sera considérée comme un mot formé par PrimerPrep.</p>
+<p id="footnote3"><a href="#fnanchor3"><sup>3</sup></a> <a href="https://www.weareteachers.com/what-are-sight-words/">https://www.weareteachers.com/what-are-sight-words/</a>
+</body>
+</html>
