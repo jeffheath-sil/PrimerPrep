@@ -9,7 +9,7 @@ block_cipher = None
 
 
 a1 = Analysis(['PrimerPrep.py'],
-             pathex=['C:\\msys64\\home\\jeff_\\PrimerPrep'],
+             pathex=[],
              binaries=[(os.path.join(typelib_path, tl), 'gi_typelibs') for tl in os.listdir(typelib_path)],
              datas=[ ('PrimerPrep.glade', '.'), ('PrimerPrep.ico', '.'), ('PrimerPrep 18x18.ico', '.'), 
                      ('Help', 'Help'), ('po', 'po') ],
@@ -32,7 +32,7 @@ exe1 = EXE(pyz1,
           console=False )
 
 a2 = Analysis(['PrimerPrepSplash.py'],
-             pathex=['C:\\msys64\\home\\jeff_\\PrimerPrep'],
+             pathex=[],
              binaries=[],
              datas=[ ('PrimerPrepSplash.py', '.'), ('PrimerPrepSplash.png', '.') ],
              hiddenimports=[],

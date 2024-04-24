@@ -11,7 +11,7 @@ REM Call PyInstaller to build the program in the "dist" folder
 pyinstaller PrimerPrep-Folder.spec
 
 REM Call InnoSetup to build the final installer file for distribution
-if [%INNOSETUP_PATH%]==[] (
+if "%INNOSETUP_PATH%"=="" (
     SET "INNOSETUP_PATH=%ProgramFiles(x86)%\Inno Setup 6"
 )
 "%INNOSETUP_PATH%\ISCC.exe" PrimerPrep.iss

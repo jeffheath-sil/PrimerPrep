@@ -1264,6 +1264,9 @@ the Language:</property>
                 <property name="can-focus">True</property>
                 <property name="wrap-mode">word</property>
                 <property name="accepts-tab">False</property>
+                <style>
+                  <class name="vernacular"/>
+                </style>
               </object>
               <packing>
                 <property name="expand">True</property>
