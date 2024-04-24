@@ -126,29 +126,6 @@ Now my Terminal command line looks like this:
 fraser@vm-ubuntu20:~/PrimerPrep/source$ █
 ```
 
-### 2.4. Unzip the compressed directories in the `source` folder
-
-Next, unpack the two compressed directories, `po.zip` and `Help.zip`:
-
-```
-unzip po.zip
-unzip Help.zip
-```
-You can make sure they were unzipped by showing a directory listing of the folder contents using the `ls -1` command:
-```
-fraser@vm-ubuntu20:~/PrimerPrep/source$ ls -1
-Help
-Help.zip
-po
-po.zip
-'PrimerPrep 18x18.ico'
-PrimerPrep-Folder.spec
-PrimerPrep.glade
-PrimerPrep.iss
-PrimerPrep.py
-```
-Notice the entries for `Help` and `po`: these are the unzipped folders.
-
 ## 3. Run the program from the command line
 
 Now you're ready to use PrimerPrep! Enter the following command in the Terminal window:
