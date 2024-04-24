@@ -18,8 +18,13 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.30 JCH Apr 2024
+#    For concordance, turn tabs in the text into spaces (tabs are used for the columns)
+# 3.29 JCH Mar 2024
+#    Fixed some font issues on startup
+#    Save/Load project processes the font properly
 # 3.28 JCH Mar 2024
-#    Added splash screen on startup, since the startup can be quite slow
+#    Added splash screen on startup, since the startup can be quite slow at times
 # 3.27 JCH Jan 2024
 #    Use built-in set_do_overwrite_confirmation in chooser, since it seems to work now
 #    If you choose not to overwrite, or project file name is bad, keep the save dialog open with same settings
@@ -106,7 +111,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.28"
+progVersion = "3.30"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -246,12 +251,13 @@ class VernacularRenderer:
     def __init__(self):
         '''Initialize this Renderer object's attributes with the defaults.
         '''
-        self.fontName = "Charis SIL Semi-Condensed 14"
+        # Initially tried Charis SIL Semi-Condensed, but had some difficulties
+        self.fontName = "Charis SIL 14"
         #self.fontName = "Gentium 14"
         # modifiable vernacular class CSS formatting
         VernacularCSS = """
 .vernacular {
-  font-family: Charis SIL Semi-Condensed, serif;
+  font-family: Charis SIL, serif;
   font-size: 14pt;
 }"""
         
@@ -1877,6 +1883,9 @@ Please try again.""")
         phraseList = []
         for fileNum in range(len(self.fileNames)):
             for line in self.fileLines[fileNum]:
+                # turn tabs in text into spaces (since tabs delineate the concordance)
+                line = line.replace('\t', ' ')
+                # split the line into words
                 linewords = re.split(r'([\s' + breaks + r']+)', line)
                 i = 0
                 while i < len(linewords):
