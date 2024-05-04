@@ -8,7 +8,7 @@ rmdir /s /q build
 rmdir /s /q dist
 
 REM Call PyInstaller to build the program in the "dist" folder
-pyinstaller PrimerPrep-Folder.spec
+pyinstaller PrimerPrep.spec
 
 REM Call InnoSetup to build the final installer file for distribution
 if "%INNOSETUP_PATH%"=="" (

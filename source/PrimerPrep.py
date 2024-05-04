@@ -18,11 +18,12 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.31 JCH Apr 2024
+#    Fixed up some problems with the splash screen on startup
 # 3.30 JCH Apr 2024
 #    For concordance, turn tabs in the text into spaces (tabs are used for the columns)
 # 3.29 JCH Mar 2024
 #    Fixed some font issues on startup
-#    Save/Load project processes the font properly
 # 3.28 JCH Mar 2024
 #    Added splash screen on startup, since the startup can be quite slow at times
 # 3.27 JCH Jan 2024
@@ -111,7 +112,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.30"
+progVersion = "3.31"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -3134,11 +3135,15 @@ if __name__ == "__main__":
     
     # display a splash screen, especially since the opening of the initial window can take some time
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        splashScreen = None
-        #cmds = [os.path.join(sys._MEIPASS, 'PrimerPrepSplash')]
+        # running in a PyInstaller bundle
+        cmds = [os.path.join(sys._MEIPASS, 'PrimerPrepSplash')]
     else:
-        cmds = ["python", os.path.join(myGlobalProgramPath, "PrimerPrepSplash.py")]
+        cmds = [sys.executable, os.path.join(myGlobalProgramPath, "PrimerPrepSplash.py")]
+    #print('Splash:', cmds)
+    try:
         splashScreen = subprocess.Popen(cmds)
+    except:
+        splashScreen = None
     
     # make sure we have our default English translation set up
     locale_path = os.path.join(myGlobalProgramPath, 'po')
