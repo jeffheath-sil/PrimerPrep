@@ -154,7 +154,6 @@ Most of the files that are downloaded from `git` aren't actually needed to run P
 ```
 cd ~/PrimerPrep
 rm -rf .git
-rm -rf builds
 ```
-NOTE that the `rm -rf` command is very dangerous, as it removes the folder with the given name and all of its subfolders without asking for any confirmation. So make sure you are deleting the right folders! The `.git` folder contains all the version control history information for the PrimerPrep repository, and the `builds` folder contains the Windows installers, neither of which are needed to run PrimerPrep on Linux. You can also delete the Help.zip and po.zip files once you've extracted those folders.
+NOTE that the `rm -rf` command is very dangerous, as it removes the folder with the given name and all of its subfolders without asking for any confirmation. So make sure you are deleting the right folder! The `.git` folder contains all the version control history information for the PrimerPrep repository which is not needed to run PrimerPrep on Linux.
 
