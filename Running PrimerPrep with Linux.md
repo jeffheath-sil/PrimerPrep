@@ -120,15 +120,15 @@ git clone https://github.com/jeffheath-sil/PrimerPrep.git
 ```
 `git` will download the files and put them in a new folder called `PrimerPrep` in the current working directory.
 
-### 2.3 Navigate to the PrimerPrep `source` folder
+### 2.3 Navigate to the PrimerPrep folder
 
-After `git` has fetched all the files, navigate to the `source` directory in your new local PrimerPrep folder:
+After `git` has fetched all the files, navigate to your new local PrimerPrep folder:
 ```
-cd PrimerPrep/source/
+cd PrimerPrep
 ```
 Now my Terminal command line looks like this:
 ```
-fraser@vm-ubuntu20:~/PrimerPrep/source$ █
+fraser@vm-ubuntu20:~/PrimerPrep$ █
 ```
 
 ## 3. Run the program from the command line
@@ -144,7 +144,7 @@ When you want to quit PrimerPrep, use the **File > Exit** menu option in the Pri
 When you want to start using PrimerPrep again, open the Terminal, navigate to the PrimerPrep folder, and launch the program again.
 
 ```
-fraser~vm-ubuntu20:~$ cd PrimerPrep/source
+fraser@vm-ubuntu20:~$ cd PrimerPrep
 fraser@vm-ubuntu20:~/PrimerPrep/source$ python3 ./PrimerPrep.py
 ```
 
