@@ -145,7 +145,7 @@ When you want to start using PrimerPrep again, open the Terminal, navigate to th
 
 ```
 fraser@vm-ubuntu20:~$ cd PrimerPrep
-fraser@vm-ubuntu20:~/PrimerPrep/source$ python3 ./PrimerPrep.py
+fraser@vm-ubuntu20:~/PrimerPrep$ python3 ./PrimerPrep.py
 ```
 
 Happy PrimerPrepping!
