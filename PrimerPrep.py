@@ -18,6 +18,13 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.33 JCH Jun 2024
+#    Some tweaks to font selection and rendering
+#    Removed Auto-Search for Digraphs option from Configure menu
+# 3.32 JCH May 2024
+#    Returned to a flatter project directory structure
+#    Help files (including en_US) now all use the %locale_with_underscore% marking
+#    (Helper batch and python files now manage Crowdin integration, creation of localized Help files)
 # 3.31 JCH Apr 2024
 #    Fixed up some problems with the splash screen on startup
 # 3.30 JCH Apr 2024
@@ -112,7 +119,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.31"
+progVersion = "3.33"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -242,7 +249,7 @@ class VernacularRenderer:
                 # set up the CSS vernacular class (which will automatically update fields with this class)
                 VernacularCSS = """
 .vernacular {{
-  font-family: {}, serif;
+  font-family: {}, 'Charis SIL Semi-Condensed', 'Charis SIL', Gentium, Ubuntu, serif;
   font-size: {}pt;
 }}""".format(m.group(1), m.group(2))
                 self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
@@ -253,12 +260,15 @@ class VernacularRenderer:
         '''Initialize this Renderer object's attributes with the defaults.
         '''
         # Initially tried Charis SIL Semi-Condensed, but had some difficulties
-        self.fontName = "Charis SIL 14"
+        if platform.system() == "Windows":
+            self.fontName = "Charis SIL Semi-Condensed 14"
+        else:
+            self.fontName = "Ubuntu 14"
         #self.fontName = "Gentium 14"
         # modifiable vernacular class CSS formatting
         VernacularCSS = """
 .vernacular {
-  font-family: Charis SIL, serif;
+  font-family: 'Charis SIL Semi-Condensed', 'Charis SIL', Gentium, Ubuntu, serif;
   font-size: 14pt;
 }"""
         
@@ -977,18 +987,6 @@ class WordAnalysis:
                 else:
                     # first time to see this word, set count to 1, set defaults for all other list fields
                     self.words[word] = [1, False, False, word, '<b>' + word + '</b>']
-                    # only need to Auto-Search for Digraphs if this is a new word
-                    if self.autoSearchDigraphs:
-                        # search for certain common digraphs
-                        for digraph in re.findall(
-                            r'(ch|kh|kp|gb|sh|th|^mb|^nd|^nj|^nz|^\u014bg)', word):
-                            if digraph not in self.digraphs:
-                                self.digraphs.append(digraph)
-                        ## search for doubled consonants and vowels (only a-z)
-                        #for double in re.findall(r'([a-zA-Z])\1', word):
-                            #double *= 2
-                            #if double not in self.digraphs:
-                                #self.digraphs.append(double)
         
         # process the affixes as well, if any; also sets teachingOrderChanged to True to force recalculating teaching order
         self.ProcessAffixes()
@@ -1979,8 +1977,6 @@ Please try again.""")
         self.lessonTexts = {}
         self.selectedGrapheme = None
         
-        # default value for auto-search for digraphs
-        self.autoSearchDigraphs = True
         # default value for treating combining diacritics separately
         self.separateCombDiacritics = False
         # define default parameters for dealing with SFM files
@@ -2119,15 +2115,6 @@ class Handler:
             myGlobalPath = os.path.dirname(filename)
         chooser.destroy()
     
-    def on_autoSearchDigraphsMenuItem_toggled(self, widget, data=None):
-        global myGlobalWindow
-        global myGlobalConfig
-        # menu processing has already toggled checkmark, we just load in its value
-        myGlobalWindow.analysis.autoSearchDigraphs = widget.get_active()
-        # update config object and save
-        myGlobalConfig['Option']['digraphautosearch'] = '1' if widget.get_active() else '0'
-        SaveConfig()
-    
     def on_selectFontMenuItem_activate(self, *args):
         '''Process the Configure > Select the Text Font menu, to choose display font.'''
         global myGlobalWindow
@@ -2167,7 +2154,8 @@ class Handler:
     
     def on_helpMenuItem_activate(self, *args):
         '''Process the Help > PrimerPrep Help menu. Display help web page.'''
-        filename = os.path.join(myGlobalProgramPath, 'Help', _("PrimerPrepHelp.htm"))
+        lang = myGlobalConfig['Option']['lang']
+        filename = os.path.join(myGlobalProgramPath, 'Help', "PrimerPrepHelp-" + lang + ".htm")
         if not os.path.exists(filename):
             title = _("Warning")
             msg = _("The help file was not found.")
@@ -2204,8 +2192,6 @@ introducing the letters in a primer.""")
         del myGlobalWindow.analysis
         # create a new instance of WordAnalysis to store our data
         myGlobalWindow.analysis = WordAnalysis()
-        # we need to set the value of autoSearchDigraphs properly from menu
-        myGlobalWindow.analysis.autoSearchDigraphs = myGlobalBuilder.get_object('autoSearchDigraphsMenuItem').get_active()
         # we need to set the value of separateCombDiacritics properly from check button
         myGlobalWindow.analysis.separateCombDiacritics = myGlobalBuilder.get_object('separateDiacriticsCheckButton').get_active()
         # the affix list has been cleared, so make sure it is cleared in the interface
@@ -2278,13 +2264,6 @@ introducing the letters in a primer.""")
             # returned True, so word break char list changed - reprocess all texts
             title = _("Reprocessing texts")
             msg = _("The list of word-breaking characters changed, so all\nof the text data is being reprocessed.")
-            if myGlobalWindow.analysis.autoSearchDigraphs:
-                msg += "\n\n" + \
-                       _("""NOTE that since the 'Auto-Search for Digraphs' option is
-selected, this process may find and add new digraphs to
-your digraph list. You may want to select 'Configure Digraphs'
-in the Configure menu after this process is finished to
-verify that all of your digraphs are correct.""")
             SimpleMessage(title, "dialog-warning", msg)
             # ask the WordAnalysis object to reprocess all texts again
             myGlobalWindow.analysis.ReprocessTexts()
@@ -3146,7 +3125,7 @@ if __name__ == "__main__":
         splashScreen = None
     
     # make sure we have our default English translation set up
-    locale_path = os.path.join(myGlobalProgramPath, 'po')
+    locale_path = os.path.join(myGlobalProgramPath, 'translations')
     # a list of translation languages, each with a tuple
     # (code, menu text, font (blank for default), direction (LTR or RTL), translation engine)
     translation_languages = []
@@ -3206,9 +3185,8 @@ if __name__ == "__main__":
         if myGlobalInterface != 'en_US':
             for idx, (code, title, font, direction, engine) in enumerate(translation_languages):
                 if code == myGlobalInterface:
-                    configMenu.get_children()[idx+3].activate()
-        if myGlobalConfig['Option'].get('digraphautosearch', '1') != '1':
-            myGlobalBuilder.get_object("autoSearchDigraphsMenuItem").set_active(False)
+                    # assumes there are exactly two Configure menu items before the language radio buttons start
+                    configMenu.get_children()[idx+2].activate()
         if myGlobalConfig['Option'].get('excludeaffixes', '1') != '1':
             myGlobalBuilder.get_object("affixesSeparateWordsRadioButton").set_active(True)
         if myGlobalConfig['Option'].get('countallwords', '1') != '1':
@@ -3218,7 +3196,7 @@ if __name__ == "__main__":
     else:
         # no config file, create a default one and save it out
         myGlobalConfig['Option'] = {'lang': 'en',
-                                    'digraphautosearch': '1',
+                                    'digraphautosearch': '1',  # deprecated
                                     'excludeaffixes': '1', 
                                     'countallwords': '1',
                                     'separatecombdia' : '0'}

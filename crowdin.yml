@@ -1,0 +1,25 @@
+#
+# Your Crowdin credentials
+#
+"base_path": "."
+"base_url": "https://api.crowdin.com"
+
+"preserve_hierarchy": true
+
+files: [
+  {
+    "source": "locale/PrimerPrep.pot",
+    "translation": "locale/%locale_with_underscore%/LC_MESSAGES/PrimerPrep.po"
+  },
+  {
+    "source": "locale/PrimerPrepHelp.pot",
+    "translation": "locale/%locale_with_underscore%/LC_MESSAGES/PrimerPrepHelp.po"
+  },
+  {
+    "source": "Help/*.png",
+    "translation": "Help/%locale_with_underscore%/%original_file_name%",
+    "ignore": [
+      "Help/PrimerPrepSightWordsSymbol.png"
+    ]
+  }
+]

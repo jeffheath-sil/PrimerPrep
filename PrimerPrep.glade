@@ -164,16 +164,6 @@
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
                     <child>
-                      <object class="GtkCheckMenuItem" id="autoSearchDigraphsMenuItem">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Auto-Search for Digraphs</property>
-                        <property name="use-underline">True</property>
-                        <property name="active">True</property>
-                        <signal name="toggled" handler="on_autoSearchDigraphsMenuItem_toggled" swapped="no"/>
-                      </object>
-                    </child>
-                    <child>
                       <object class="GtkMenuItem" id="selectFontMenuItem">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
@@ -458,7 +448,7 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="affixesSeparateWordsRadioButton">
-                                <property name="label" translatable="yes">treated as separate words</property>
+                                <property name="label" translatable="yes">analyzed separately</property>
                                 <property name="visible">True</property>
                                 <property name="can-focus">True</property>
                                 <property name="receives-default">False</property>

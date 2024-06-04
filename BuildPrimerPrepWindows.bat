@@ -1,7 +1,7 @@
 @echo on
 REM Use this Batch file to build PrimerPrep Installer for Windows
 REM by Jeff Heath (with inspiration from Mark Penny and Martin Hosken)
-REM Last updated: Apr-2024
+REM Last updated: June-2024
 
 REM Delete any existing build folders before starting the new build process
 rmdir /s /q build
