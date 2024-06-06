@@ -18,6 +18,9 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.34 JCH Jun 2024
+#    Fix word counts for affixes that are analyzed separately (words with affixes were
+#    overcounted, causing them to appear too early in the word Examples in the Teaching Order)
 # 3.33 JCH Jun 2024
 #    Some tweaks to font selection and rendering
 #    Removed Auto-Search for Digraphs option from Configure menu
@@ -119,7 +122,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.33"
+progVersion = "3.34"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -1113,9 +1116,16 @@ class WordAnalysis:
         kWordMarkupForm = 4
         
         for word, word_info in self.words.items():
-            # we need the word as a list of graphemes to determine the example words (morphemes are used for Teaching Order calculations)
+            # decompose this word as a list of graphemes to determine the example words 
+            # (morphemes are used for the Teaching Order calculations)
             self.wordsAsGraphemes[word] = re.findall(findGraphemes, word)
-            # split into affixes
+            # put the word count into the analysisWords dictionary (zero if this word is excluded)
+            if not word_info[kWordExclude]:
+                self.analysisWords[word] = (word_info[kWordCnt] if countWords else 1)
+            else:
+                self.analysisWords[word] = 0
+            
+            # process the individual affixes of this word
             affixList = word_info[kWordAffixForm].split(' ')
             for morph in affixList:
                 # process each affix or root
@@ -1127,16 +1137,22 @@ class WordAnalysis:
                             self.analysisMorphemes.get(morph, 0) + (word_info[kWordCnt] if countWords else 1)
                     else:
                         # don't count the graphemes of excluded words, but make sure it's in the word list (with zero count)
-                        self.analysisMorphemes[morph] = 0
-                    # add this morpheme count into the count for the entire word
-                    self.analysisWords[word] = self.analysisWords.get(word, 0) + self.analysisMorphemes[morph]
+                        if morph not in self.analysisMorphemes:
+                            self.analysisMorphemes[morph] = 0
                     
                     morphNoHyphen = morph
                     if morphNoHyphen.endswith('-') or morphNoHyphen.startswith('-'):
                         # this is an affix, so remove the hyphen before splitting into graphemes
                         morphNoHyphen = morphNoHyphen.replace('-', '')
-                    # make the morpheme into a list of graphemes
-                    graphemes = re.findall(findGraphemes, morphNoHyphen)
+                    
+                    # retrieve a list of graphemes for this morpheme
+                    if morph in self.morphemesAsGraphemes:
+                        # just load the graphemes that were generated before
+                        graphemes = self.morphemesAsGraphemes[morph]
+                    else:
+                        # generate and store the graphemes for this morpheme
+                        graphemes = re.findall(findGraphemes, morphNoHyphen)
+                        self.morphemesAsGraphemes[morph] = graphemes
                     for grapheme in graphemes:
                         if not word_info[kWordExclude]:
                             # increase count of uses for this grapheme by num of words
@@ -1147,7 +1163,6 @@ class WordAnalysis:
                             # just make sure the grapheme is in the graphemeUse dictionary
                             if grapheme not in self.graphemeUse:
                                 self.graphemeUse[grapheme] = 0
-                    self.morphemesAsGraphemes[morph] = graphemes
         
         teachingOrderAlgorithm = "elimination"
         if teachingOrderAlgorithm == "elimination":

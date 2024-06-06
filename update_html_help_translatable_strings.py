@@ -34,9 +34,18 @@ def load_translations(locale):
                     current_msgid = current_msgid.replace('\\"', '"')
                     current_msgid = current_msgid.replace('\\\\', '\\')
                 elif line.startswith('msgstr "') and line.endswith('"'):
+                    # Only store the translation if we have a current, valid msgid
                     if current_msgid:
-                        # Extract msgstr and restore double quotes, then store pair in dictionary
-                        translations[current_msgid] = line[8:-1].replace('\\"', '"')
+                        # Extract msgstr
+                        current_msgstr = line[8:-1]
+                        # Restore any escaped special characters (backslashes or double quotes)
+                        current_msgstr = current_msgstr.replace('\\"', '"')
+                        current_msgstr = current_msgstr.replace('\\\\', '\\')
+                        if (locale == 'fr_FR'):
+                            # For French, we want to turn apostrophes into typographic apostrophes
+                            current_msgstr = current_msgstr.replace("'", "’")
+                        # Store the msgid, msgstr pair in the dictionary
+                        translations[current_msgid] = current_msgstr
                         current_msgid = None  # No current entry
     return translations
 
@@ -73,8 +82,6 @@ def replace_translations(locale, translations, html_source, html_translation, fo
                         translation_string = match
                         translated_text = translations.get(translation_string, translation_string)  # Get translation or use original string
                         if translated_text:
-                            # for some reason, backslashes still come out of the dictionary as double backslashes, so fix them
-                            translated_text = translated_text.replace('\\\\', '\\')
                             line = line.replace(translation_string, translated_text)
                     # Point to any replacement images that exist
                     matches = re.findall(compiled_image_pattern, line)
