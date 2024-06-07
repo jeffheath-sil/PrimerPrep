@@ -222,6 +222,14 @@
                       </object>
                     </child>
                     <child>
+                      <object class="GtkMenuItem" id="feedbackMenuItem">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">Give Feedback...</property>
+                        <signal name="activate" handler="on_feedbackMenuItem_activate" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkSeparatorMenuItem" id="helpseparator1">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>

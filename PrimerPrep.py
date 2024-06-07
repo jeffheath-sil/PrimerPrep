@@ -18,6 +18,9 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.35 JCH Jun 2024
+#    Fix loss of affixes in display when you change UI language
+#    Add Give Feedback feature (which uses a Google form) in Help menu
 # 3.34 JCH Jun 2024
 #    Fix word counts for affixes that are analyzed separately (words with affixes were
 #    overcounted, causing them to appear too early in the word Examples in the Teaching Order)
@@ -122,7 +125,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.34"
+progVersion = "3.35"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -166,7 +169,7 @@ myGlobalBuilder = None
 # global variable to hold the main window - needed as parent for various dialogs
 myGlobalWindow = None
 # global variable for the interface language (English by default)
-myGlobalInterface = 'en'
+myGlobalInterface = 'en_US'
 # global variable for the config file (with complete path)
 myGlobalConfigFile = ''
 # global variable for the config object (so we can update settings and save them out)
@@ -764,7 +767,6 @@ class WordAnalysis:
         Parameter: file (str) - file name and path of file to check
         Return value: True if the file was loaded without error
         '''
-        global myGlobalInterface
         # check if this is an SFM file, configure if not done yet
         isSFMFile = self.CheckIfSFM(file)
         
@@ -2161,6 +2163,8 @@ class Handler:
             #myGlobalBuilder.get_object('teachingOrderScrolledWindow').get_hadjustment().set_value(0)
         _ = translation_languages[idx][4].gettext
         myGlobalBuilder.recursive_xml_translate(myGlobalBuilder.tree.getroot())
+        # this will make the affixes list empty, so update the list
+        myGlobalWindow.UpdateAffixList()
         myGlobalWindow.ShowSummaryStatusBar()
         
         # update config object and save
@@ -2177,6 +2181,11 @@ class Handler:
             SimpleMessage(title, "dialog-warning", msg)
         else:
             webbrowser.open("file:///" + filename)
+    
+    def on_feedbackMenuItem_activate(self, *args):
+        '''Process the Help > Give Feedback menu. Go to Google form web page.'''
+        #lang = myGlobalConfig['Option']['lang']'   # May eventually want to go to a different page dependent on UI language?
+        webbrowser.open("https://docs.google.com/forms/d/e/1FAIpQLSddxvDvbn0uohOt7J4Gcc48KgLxg1q4hOfjeYLRSUlKB4pQUw/viewform?usp=sf_link", new=2)
     
     def on_aboutMenuItem_activate(self, *args):
         '''Process the Help > About menu. Display information about the program.'''
@@ -2523,7 +2532,6 @@ class PrimerPrepWindow:
         Parameters: filename (str) - full file name/path
                     filetext (str) - multiline string of contents of file to write
         '''
-        global myGlobalInterface
         #logger.debug('Saving as:', filename)
         try:
             save_file = open(filename, 'w', encoding='utf-8')
@@ -3210,7 +3218,7 @@ if __name__ == "__main__":
             myGlobalBuilder.get_object("separateDiacriticsCheckButton").set_active(True)
     else:
         # no config file, create a default one and save it out
-        myGlobalConfig['Option'] = {'lang': 'en',
+        myGlobalConfig['Option'] = {'lang': 'en_US',
                                     'digraphautosearch': '1',  # deprecated
                                     'excludeaffixes': '1', 
                                     'countallwords': '1',
