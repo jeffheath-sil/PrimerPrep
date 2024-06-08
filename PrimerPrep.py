@@ -21,6 +21,7 @@
 # 3.35 JCH Jun 2024
 #    Fix loss of affixes in display when you change UI language
 #    Add Give Feedback feature (which uses a Google form) in Help menu
+#    Match longer affixes before shorter ones
 # 3.34 JCH Jun 2024
 #    Fix word counts for affixes that are analyzed separately (words with affixes were
 #    overcounted, causing them to appear too early in the word Examples in the Teaching Order)
@@ -1480,6 +1481,9 @@ class WordAnalysis:
         # create lists of prefixes and suffixes (by looking at position of '-' in affix list elements)
         prefixes = [a[:-1] for a in self.affixes if a.endswith('-')]
         suffixes = [a[1:] for a in self.affixes if a.startswith('-')]
+        # sort affixes from longest to shortest (so mgba- will match before m-)
+        prefixes.sort(key=len, reverse=True)
+        suffixes.sort(key=len, reverse=True)
         #  create RegEx's for finding affixes 
         prefMatch = re.compile('^(' + '|'.join(a for a in prefixes) + ')')
         suffMatch = re.compile('(' + '|'.join(a for a in suffixes) + ')$')
