@@ -22,6 +22,7 @@
 #    Fix loss of affixes in display when you change UI language
 #    Add Give Feedback feature (which uses a Google form) in Help menu
 #    Match longer affixes before shorter ones
+#    Make LoadProject more robust in error handling, prepare for loading old data models
 # 3.34 JCH Jun 2024
 #    Fix word counts for affixes that are analyzed separately (words with affixes were
 #    overcounted, causing them to appear too early in the word Examples in the Teaching Order)
@@ -152,6 +153,8 @@ import codecs
 import unicodedata
 import xml.etree.ElementTree as ET
 import pickle
+class UnknownProjectType(Exception):
+    pass
 import numpy as np
 import configparser
 import webbrowser
@@ -2627,15 +2630,14 @@ class PrimerPrepWindow:
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             if filename:
-                #logger.debug("Loading: {}".format(filename))
-                with open(filename, 'rb') as f:
-                    vernum = pickle.load(f)
-                    if not isinstance(vernum, int) or vernum != dataModelVersion:
-                        # invalid project file
-                        title = _("Error")
-                        msg = _("Incompatible project file.")
-                        SimpleMessage(title, "dialog-error", msg)
-                    else:
+                logger.debug("Loading: {}".format(filename))
+                try:
+                    with open(filename, 'rb') as f:
+                        vernum = pickle.load(f)
+                        if not isinstance(vernum, int) or vernum not in (1, ):
+                            # this is not a project file that we know how to load
+                            raise UnknownProjectType
+                        
                         del self.analysis
                         self.analysis = pickle.load(f)
                         
@@ -2644,12 +2646,14 @@ class PrimerPrepWindow:
                         myGlobalRenderer.fontName = options[0]
                         self.affixesExcluded.set_active(options[1])
                         self.countEachWord.set_active(options[2])
+                        
+                        # from the loaded analysis data, set the checkbox for separate diacritics
                         sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
                         sepDiacr.set_active(self.analysis.separateCombDiacritics)
                         
-                        # once the analysis data is loaded, update all of the ListStores
+                        # from the loaded analysis data, update all of the ListStores
                         self.analysis.UpdateFileList(self.fileListStore,
-                                                               myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
+                                                     myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
                         self.analysis.UpdateWordList(self.wordListStore)
                         self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
                         self.UpdateAffixList()
@@ -2666,8 +2670,19 @@ class PrimerPrepWindow:
                         # but note that teachingOrderChanged could be true, so a rebuild will be necessary
                         self.analysis.dataChanged = False
                         
-                        # because teaching order rebuild may be necessary, good to start on first notebook tab
+                        # because teaching order rebuild may be necessary, it's good to start on first notebook tab
                         self.mainNB.set_current_page(0)
+                except (OSError, IOError, EOFError, pickle.UnpicklingError) as e:
+                    # general error reading the file
+                    title = _("Error")
+                    msg = _("Error reading project: ") + str(e)
+                    SimpleMessage(title, "dialog-error", msg)
+                except UnknownProjectType:
+                    # unknown type of project file
+                    title = _("Error")
+                    msg = _("This file does not contain valid project data.")
+                    SimpleMessage(title, "dialog-error", msg)
+                    
         chooser.destroy()
     
     def AddTexts(self):
