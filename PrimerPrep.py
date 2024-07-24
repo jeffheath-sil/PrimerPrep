@@ -18,6 +18,10 @@
 # © 2024 SIL International
 #
 # Modifications:
+# 3.36 JCH Jul 2024
+#    Improve project handling - add new menus (New, Open, Save, Save As)
+#    Add .ppdata extension to project file name if it's not there, but allow user to modify
+#    Remove Clear Texts button, add Choose Lexicon button
 # 3.35 JCH Jun 2024
 #    Fix loss of affixes in display when you change UI language
 #    Add Give Feedback feature (which uses a Google form) in Help menu
@@ -127,7 +131,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.35"
+progVersion = "3.36"
 progYear = "2024"
 dataModelVersion = 1
 DEBUG = False
@@ -166,6 +170,12 @@ import json
 myGlobalProgramPath = ''
 # global variable to store the current working directory path
 myGlobalPath = ''
+# global variable to store the current working project path
+# (note that this interacts with myGlobalPath, but is not the same, as our project could be in one place - and
+# we need to remember where it is! - but we might be saving word lists or teaching orders elsewhere)
+myGlobalProjectPath = ''
+# global variable to store the current working project name (without path, but including the .ppdata extension)
+myGlobalProjectName = ''
 # global instance of Renderer for managing fonts in the program (esp. TreeView)
 myGlobalRenderer = None
 #  global variable to hold the Glade builder - needed for loading UI elements
@@ -2069,16 +2079,24 @@ class Handler:
             if not SimpleYNQuestion(title, 'dialog-warning', msg):
                 # no, we shouldn't quit
                 return
-        # either data hasn't changed or user confirmed to quit anyway
+        # either data hasn't changed since last save or user confirmed to quit anyway
         Gtk.main_quit()
+    
+    def on_newProjectMenuItem_activate(self, *args):
+        global myGlobalWindow
+        myGlobalWindow.NewProject()
+    
+    def on_openProjectMenuItem_activate(self, *args):
+        global myGlobalWindow
+        myGlobalWindow.OpenProject()
     
     def on_saveProjectMenuItem_activate(self, *args):
         global myGlobalWindow
         myGlobalWindow.SaveProject()
     
-    def on_loadProjectMenuItem_activate(self, *args):
+    def on_saveProjectAsMenuItem_activate(self, *args):
         global myGlobalWindow
-        myGlobalWindow.LoadProject()
+        myGlobalWindow.SaveProjectAs()
     
     def on_saveTeachingOrderMenuItem_activate(self, *args):
         '''Process the File > Save Teaching Order menu.'''
@@ -2211,38 +2229,14 @@ introducing the letters in a primer.""")
         # run the open file dialog, and handle loading any file(s) chosen
         myGlobalWindow.AddTexts()
     
-    def on_clearAllTextsButton_clicked(self, button):
-        '''Process a Clear All Texts button click. Since this was requested by
-        the user, we want to really start from scratch, including all configuration
-        information. The easiest way to do this is to just delete the WordAnalysis
-        object instance and create a new one.'''
-        global myGlobalBuilder
-        global myGlobalWindow
+    def on_chooseLexiconButton_clicked(self, button):
+        '''Using a FileChooserDialog, allow user to select and open a lexicon file
+        (LIFT or SFM format file).
+        '''
+        title = _("Information")
+        msg = _("Feature coming soon!")
+        SimpleMessage(title, 'dialog-information', msg)
         
-        # get rid of the old WordAnalysis object
-        del myGlobalWindow.analysis
-        # create a new instance of WordAnalysis to store our data
-        myGlobalWindow.analysis = WordAnalysis()
-        # we need to set the value of separateCombDiacritics properly from check button
-        myGlobalWindow.analysis.separateCombDiacritics = myGlobalBuilder.get_object('separateDiacriticsCheckButton').get_active()
-        # the affix list has been cleared, so make sure it is cleared in the interface
-        myGlobalWindow.UpdateAffixList()
-        
-        # prevent the non-existant teaching order from being saved
-        menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
-        menu.set_sensitive(False)
-        
-        # clear out list stores and update status bar
-        fileList = myGlobalBuilder.get_object("fileListStore")
-        fileList.clear()
-        myGlobalWindow.filterTextEntry.set_text('')
-        myGlobalWindow.wordListStore.clear()
-        # clear the text, so we don't try to mark untaught residue
-        text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
-        text.set_text("")
-        myGlobalWindow.teachingOrderListStore.clear()
-        myGlobalWindow.ShowSummaryStatusBar()
-    
     def on_showFullPathCheckButton_toggled(self, *args):
         global myGlobalBuilder
         fileListStore = myGlobalBuilder.get_object('fileListStore')
@@ -2551,16 +2545,101 @@ class PrimerPrepWindow:
             msg = _("Error. File could not be written.")
             SimpleMessage(title, 'dialog-error', msg)
     
+    def NewProject(self):
+        '''Create a new project (after confirmation not to save existing data). We want
+        to really start from scratch, including all configuration information. The easiest
+        way to do this is to just delete the WordAnalysis object instance and create a new one.
+        '''
+        global myGlobalProjectPath
+        global myGlobalProjectName
+        global myGlobalBuilder
+        
+        if self.analysis.dataChanged:
+            # confirm clearing data
+            title = _("Confirm clear data")
+            msg = _("There is unsaved data. Start a new project anyway?")
+            if not SimpleYNQuestion(title, 'dialog-warning', msg):
+                # no, we shouldn't quit
+                return
+        # either data hasn't changed since last save or user confirmed to continue anyway
+        
+        # get rid of the old WordAnalysis object
+        del self.analysis
+        # create a new instance of WordAnalysis to store our data
+        self.analysis = WordAnalysis()
+        # we need to set the value of separateCombDiacritics properly from check button
+        self.analysis.separateCombDiacritics = myGlobalBuilder.get_object('separateDiacriticsCheckButton').get_active()
+        # the affix list has been cleared, so make sure it is cleared in the interface
+        self.UpdateAffixList()
+        
+        # prevent the non-existant project or teaching order from being saved
+        menu = myGlobalBuilder.get_object("saveProjectMenuItem")
+        menu.set_sensitive(False)
+        menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+        menu.set_sensitive(False)
+        
+        # clear out list stores and update status bar
+        fileList = myGlobalBuilder.get_object("fileListStore")
+        fileList.clear()
+        self.filterTextEntry.set_text('')
+        self.wordListStore.clear()
+        # clear the text, so we don't try to mark untaught residue
+        text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
+        text.set_text("")
+        self.teachingOrderListStore.clear()
+        self.ShowSummaryStatusBar()
+        # make sure there is no project name, including in the window title
+        myGlobalProjectName = ""
+        self.window.set_title("PrimerPrep")
+    
     def SaveProject(self):
-        '''Save the project configuration, allowing restoring and continuing work later.
+        '''Save the project configuration, using the already specified filename
+        (so this must follow an Open or Save As command to have a valid filename and path).
+        All data structures are stored (using pickle), so they can be restored later.
+        '''
+        global myGlobalProjectPath
+        global myGlobalProjectName
+        global myGlobalRenderer
+        
+        # make sure that the project name is valid
+        projectExtPattern = r'.+\.ppdata$'
+        if not re.match(projectExtPattern, myGlobalProjectName):
+            # invalid file name (but this shouldn't happen...)
+            title = _("Error")
+            msg = _("Invalid file name.")
+            SimpleMessage(title, "dialog-error", msg)
+            return
+        filename = os.path.join(myGlobalProjectPath, myGlobalProjectName)
+        # save the project with the dataChanged value indicating no need to save
+        self.analysis.dataChanged = False
+        # save all of the important data structures to the file, serializing them with pickle
+        try:
+            with open(filename, 'wb') as f:
+                # make sure current lesson text is saved
+                self.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
+                self.analysis.selectedGrapheme = None
+                
+                # save all of the data into this project backup file
+                pickle.dump(dataModelVersion, f)
+                pickle.dump(self.analysis, f)
+                options = (myGlobalRenderer.fontName, self.affixesExcluded.get_active(),
+                           self.countEachWord.get_active())
+                pickle.dump(options, f)
+        except (OSError, EOFError, pickle.PicklingError) as e:
+            # general error writing the file
+            title = _("Error")
+            msg = _("Error writing project: ") + str(e)
+            SimpleMessage(title, "dialog-error", msg)
+    
+    def SaveProjectAs(self):
+        '''Ask user for a filename and save the entire project configuration to that .ppdata
+        file. This allows user to open the project later and continuing where they left off.
         Using a FileChooserDialog, the user specifies the file name and location, and
         all data structures are stored (using pickle), so they can be restored later.
-        
-        Parameters: widget (unused)
-                    data (unused)
         '''
         global myGlobalPath
-        global myGlobalRenderer
+        global myGlobalProjectPath
+        global myGlobalProjectName
         
         msg = _("Save project as...")
         chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
@@ -2568,7 +2647,10 @@ class PrimerPrepWindow:
         chooser.add_buttons(Gtk.STOCK_SAVE, Gtk.ResponseType.OK,
                             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
         chooser.set_current_name(_("project.ppdata"))
-        chooser.set_current_folder(myGlobalPath)
+        if not myGlobalProjectPath:
+            # start with the default if we haven't yet loaded a project
+            myGlobalProjectPath = myGlobalPath
+        chooser.set_current_folder(myGlobalProjectPath)
         chooser.set_do_overwrite_confirmation(True)
         chooser.set_default_response(Gtk.ResponseType.OK)
         filter = Gtk.FileFilter()
@@ -2583,37 +2665,32 @@ class PrimerPrepWindow:
                 title = _("Error")
                 msg = _("You must use a file name extension of .ppdata for your project.")
                 SimpleMessage(title, "dialog-error", msg)
-                #chooser.destroy()
+                # add the proper extension
+                chooser.set_current_name(os.path.basename(filename) + ".ppdata")
                 continue
-            # save all of the important data structures to the file, serializing them with pickle
-            self.analysis.dataChanged = False
-            with open(filename, 'wb') as f:
-                # make sure current lesson text is saved
-                self.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
-                self.analysis.selectedGrapheme = None
-                
-                # save all of the data into this project backup file
-                pickle.dump(dataModelVersion, f)
-                pickle.dump(self.analysis, f)
-                options = (myGlobalRenderer.fontName, self.affixesExcluded.get_active(),
-                           self.countEachWord.get_active())
-                pickle.dump(options, f)
-            # save this path for next time we need to write out a file
-            myGlobalPath = os.path.dirname(filename)
+            # save the path and filename (and update myGlobalPath)
+            myGlobalProjectPath = os.path.dirname(filename)
+            myGlobalPath = myGlobalProjectPath
+            myGlobalProjectName = os.path.basename(filename)
+            self.window.set_title(myGlobalProjectName + " — PrimerPrep")
+            menu = myGlobalBuilder.get_object("saveProjectMenuItem")
+            menu.set_sensitive(True)
+            # now that we have the filename and path, just use the standard Save Project code
+            self.SaveProject()
             break
         chooser.destroy()
     
-    def LoadProject(self):
-        '''Load the project details from a previously saved file. Using a FileChooserDialog,
+    def OpenProject(self):
+        '''Open a previously saved file and load the project data. Using a FileChooserDialog,
         the user locates and selects the project file to be loaded. All data structures are
         restored (using pickle).
-        
-        Parameters: widget (unused)
-                    data (unused)
         '''
+        global myGlobalPath
+        global myGlobalProjectPath
+        global myGlobalProjectName
         global myGlobalRenderer
         
-        msg = _("Choose project to load...")
+        msg = _("Choose project to open...")
         chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
                                         action=Gtk.FileChooserAction.OPEN)
         chooser.add_buttons(Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
@@ -2621,16 +2698,21 @@ class PrimerPrepWindow:
         chooser.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
         chooser.set_default_response(Gtk.ResponseType.CANCEL)
         chooser.set_select_multiple(False)
+        if not myGlobalProjectPath:
+            # start with the default if we haven't yet loaded a project
+            myGlobalProjectPath = myGlobalPath
+        chooser.set_current_folder(myGlobalProjectPath)
         
         filter = Gtk.FileFilter()
         filter.set_name(_("PrimerPrep project files"))
         filter.add_pattern("*.ppdata")
         chooser.add_filter(filter)
+        # this only allows .ppdata files to be selected, so no filename check required
         
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             if filename:
-                logger.debug("Loading: {}".format(filename))
+                logger.debug("Opening: {}".format(filename))
                 try:
                     with open(filename, 'rb') as f:
                         vernum = pickle.load(f)
@@ -2646,33 +2728,42 @@ class PrimerPrepWindow:
                         myGlobalRenderer.fontName = options[0]
                         self.affixesExcluded.set_active(options[1])
                         self.countEachWord.set_active(options[2])
+                    
+                    # save the path and filename (and update myGlobalPath)
+                    myGlobalProjectPath = os.path.dirname(filename)
+                    myGlobalPath = myGlobalProjectPath
+                    myGlobalProjectName = os.path.basename(filename)
+                    self.window.set_title(myGlobalProjectName + " — PrimerPrep")
+                    
+                    # from the loaded analysis data, set the checkbox for separate diacritics
+                    sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
+                    sepDiacr.set_active(self.analysis.separateCombDiacritics)
+                    
+                    # from the loaded analysis data, update all of the ListStores
+                    self.analysis.UpdateFileList(self.fileListStore,
+                                                 myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
+                    self.analysis.UpdateWordList(self.wordListStore)
+                    self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
+                    self.UpdateAffixList()
+                    self.ShowSummaryStatusBar()
+                    
+                    # allow the project to be saved
+                    menu = myGlobalBuilder.get_object("saveProjectMenuItem")
+                    menu.set_sensitive(True)
+                    # allow the teaching order to be saved if project has one
+                    menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+                    if hasattr(self.analysis, 'teachingOrder'):
+                        menu.set_sensitive(True)
+                    else:
+                        menu.set_sensitive(False)
                         
-                        # from the loaded analysis data, set the checkbox for separate diacritics
-                        sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
-                        sepDiacr.set_active(self.analysis.separateCombDiacritics)
-                        
-                        # from the loaded analysis data, update all of the ListStores
-                        self.analysis.UpdateFileList(self.fileListStore,
-                                                     myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
-                        self.analysis.UpdateWordList(self.wordListStore)
-                        self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
-                        self.UpdateAffixList()
-                        self.ShowSummaryStatusBar()
-                        
-                        # allow the teaching order to be saved if project has one
-                        menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
-                        if hasattr(self.analysis, 'teachingOrder'):
-                            menu.set_sensitive(True)
-                        else:
-                            menu.set_sensitive(False)
-                            
-                        # there are no changes (so you can quit without confirmation)
-                        # but note that teachingOrderChanged could be true, so a rebuild will be necessary
-                        self.analysis.dataChanged = False
-                        
-                        # because teaching order rebuild may be necessary, it's good to start on first notebook tab
-                        self.mainNB.set_current_page(0)
-                except (OSError, IOError, EOFError, pickle.UnpicklingError) as e:
+                    # there are no changes (so you can quit without confirmation)
+                    # but note that teachingOrderChanged could be true, so a rebuild of that might be necessary
+                    self.analysis.dataChanged = False
+                    
+                    # because teaching order rebuild may be necessary, it's good to start on first notebook tab
+                    self.mainNB.set_current_page(0)
+                except (OSError, EOFError, pickle.UnpicklingError) as e:
                     # general error reading the file
                     title = _("Error")
                     msg = _("Error reading project: ") + str(e)
@@ -3099,12 +3190,15 @@ class PrimerPrepWindow:
         
         self.window.set_default_direction(Gtk.TextDirection.LTR)
         self.isRTL = False
+        # this event is set as default in the .glade file for startup
         #self.window.connect("delete-event", Handler.on_mainWindow_delete_event)
         
         # show the main PrimerPrep window
         self.window.show_all()
         
         # disable certain options (these are set as defaults in the .glade file for startup)
+        #menu = myGlobalBuilder.get_object("saveProjectMenuItem")
+        #menu.set_sensitive(False)
         #menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
         #menu.set_sensitive(False)
         #button = myGlobalBuilder.get_object("removeSightWordsButton")

@@ -92,21 +92,40 @@
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
                     <child>
-                      <object class="GtkMenuItem" id="saveProjectMenuItem">
+                      <object class="GtkMenuItem" id="newProjectMenuItem">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Save Project...</property>
+                        <property name="label" translatable="yes">_New Project</property>
+                        <property name="use-underline">True</property>
+                        <signal name="activate" handler="on_newProjectMenuItem_activate" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkMenuItem" id="openProjectMenuItem">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">_Open Project...</property>
+                        <property name="use-underline">True</property>
+                        <signal name="activate" handler="on_openProjectMenuItem_activate" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkMenuItem" id="saveProjectMenuItem">
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">_Save Project</property>
                         <property name="use-underline">True</property>
                         <signal name="activate" handler="on_saveProjectMenuItem_activate" swapped="no"/>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkMenuItem" id="loadProjectMenuItem">
+                      <object class="GtkMenuItem" id="saveProjectAsMenuItem">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Load Project...</property>
+                        <property name="label" translatable="yes">Save Project As...</property>
                         <property name="use-underline">True</property>
-                        <signal name="activate" handler="on_loadProjectMenuItem_activate" swapped="no"/>
+                        <signal name="activate" handler="on_saveProjectAsMenuItem_activate" swapped="no"/>
                       </object>
                     </child>
                     <child>
@@ -120,7 +139,7 @@
                         <property name="visible">True</property>
                         <property name="sensitive">False</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">_Save Teaching Order...</property>
+                        <property name="label" translatable="yes">Save _Teaching Order...</property>
                         <property name="use-underline">True</property>
                         <signal name="activate" handler="on_saveTeachingOrderMenuItem_activate" swapped="no"/>
                       </object>
@@ -319,20 +338,6 @@
                                   </packing>
                                 </child>
                                 <child>
-                                  <object class="GtkButton" id="clearAllTextsButton">
-                                    <property name="label" translatable="yes">Clear All Texts</property>
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">True</property>
-                                    <property name="receives-default">True</property>
-                                    <signal name="clicked" handler="on_clearAllTextsButton_clicked" swapped="no"/>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">False</property>
-                                    <property name="position">1</property>
-                                  </packing>
-                                </child>
-                                <child>
                                   <object class="GtkCheckButton" id="showFullPathCheckButton">
                                     <property name="label" translatable="yes">Show full path</property>
                                     <property name="visible">True</property>
@@ -357,11 +362,11 @@
                             <child>
                               <object class="GtkScrolledWindow" id="fileListScrolledWindow">
                                 <property name="visible">True</property>
-                                <property name="can-focus">True</property>
+                                <property name="can-focus">False</property>
                                 <child>
                                   <object class="GtkTreeView" id="fileListTreeView">
                                     <property name="visible">True</property>
-                                    <property name="can-focus">True</property>
+                                    <property name="can-focus">False</property>
                                     <property name="model">fileListStore</property>
                                     <child internal-child="selection">
                                       <object class="GtkTreeSelection"/>
@@ -398,7 +403,7 @@
                       </object>
                       <packing>
                         <property name="expand">True</property>
-                        <property name="fill">False</property>
+                        <property name="fill">True</property>
                         <property name="position">0</property>
                       </packing>
                     </child>
@@ -411,6 +416,70 @@
                         <property name="expand">False</property>
                         <property name="fill">True</property>
                         <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="lexiconhbox">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="spacing">10</property>
+                        <child>
+                          <object class="GtkButton" id="chooseLexiconButton">
+                            <property name="label" translatable="yes">Choose Lexicon</property>
+                            <property name="visible">True</property>
+                            <property name="can-focus">True</property>
+                            <property name="receives-default">True</property>
+                            <property name="margin-top">5</property>
+                            <property name="margin-bottom">5</property>
+                            <signal name="clicked" handler="on_chooseLexiconButton_clicked" swapped="no"/>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">False</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <child>
+                              <object class="GtkViewport">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="shadow-type">none</property>
+                                <child>
+                                  <object class="GtkLabel" id="lexiconNameLabel">
+                                    <property name="visible">True</property>
+                                    <property name="can-focus">False</property>
+                                    <property name="halign">start</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">True</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkHSeparator" id="worddiscoveryhseparator2">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">3</property>
                       </packing>
                     </child>
                     <child>
@@ -484,17 +553,29 @@
                             <property name="can-focus">False</property>
                             <property name="spacing">10</property>
                             <child>
-                              <object class="GtkButton" id="editAffixesButton">
-                                <property name="label" translatable="yes">Edit Affixes</property>
-                                <property name="name">editAffixesButton</property>
+                              <object class="GtkBox" id="affixlistbuttonvbox">
                                 <property name="visible">True</property>
-                                <property name="can-focus">True</property>
-                                <property name="receives-default">True</property>
-                                <signal name="clicked" handler="on_editAffixesButton_clicked" swapped="no"/>
+                                <property name="can-focus">False</property>
+                                <property name="orientation">vertical</property>
+                                <child>
+                                  <object class="GtkButton" id="editAffixesButton">
+                                    <property name="label" translatable="yes">Edit Affixes</property>
+                                    <property name="name">editAffixesButton</property>
+                                    <property name="visible">True</property>
+                                    <property name="can-focus">True</property>
+                                    <property name="receives-default">True</property>
+                                    <signal name="clicked" handler="on_editAffixesButton_clicked" swapped="no"/>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">False</property>
+                                    <property name="position">0</property>
+                                  </packing>
+                                </child>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
-                                <property name="fill">False</property>
+                                <property name="fill">True</property>
                                 <property name="position">0</property>
                               </packing>
                             </child>
@@ -510,7 +591,7 @@
                                 <property name="expand">True</property>
                                 <property name="fill">True</property>
                                 <property name="padding">5</property>
-                                <property name="position">1</property>
+                                <property name="position">2</property>
                               </packing>
                             </child>
                           </object>
@@ -522,20 +603,20 @@
                         </child>
                       </object>
                       <packing>
-                        <property name="expand">True</property>
+                        <property name="expand">False</property>
                         <property name="fill">False</property>
-                        <property name="position">2</property>
+                        <property name="position">4</property>
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkHSeparator" id="worddiscoveryhseparator2">
+                      <object class="GtkHSeparator" id="worddiscoveryhseparator3">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">3</property>
+                        <property name="position">5</property>
                       </packing>
                     </child>
                     <child>
@@ -606,20 +687,20 @@
                         </child>
                       </object>
                       <packing>
-                        <property name="expand">True</property>
+                        <property name="expand">False</property>
                         <property name="fill">False</property>
-                        <property name="position">4</property>
+                        <property name="position">6</property>
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkHSeparator" id="worddiscoveryhseparator3">
+                      <object class="GtkHSeparator" id="worddiscoveryhseparator4">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">5</property>
+                        <property name="position">7</property>
                       </packing>
                     </child>
                     <child>
@@ -712,20 +793,9 @@ the Language:</property>
                         </child>
                       </object>
                       <packing>
-                        <property name="expand">True</property>
-                        <property name="fill">False</property>
-                        <property name="position">6</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkHSeparator" id="worddiscoveryhseparator4">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                      </object>
-                      <packing>
                         <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">7</property>
+                        <property name="fill">False</property>
+                        <property name="position">8</property>
                       </packing>
                     </child>
                     <child>
@@ -736,7 +806,7 @@ the Language:</property>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">False</property>
-                        <property name="position">8</property>
+                        <property name="position">9</property>
                       </packing>
                     </child>
                   </object>
