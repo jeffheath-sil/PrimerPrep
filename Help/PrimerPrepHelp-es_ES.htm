@@ -26,7 +26,7 @@ body {
 </head>
 
 <body>
-<div style="margin:10px; padding-left:20; padding-right:20; border:solid; float:right;">
+<div style="margin:1em; padding:0 1em; border:solid; float:right;">
 <h3><span translatable="yes">Table of Contents</span></h3>
 <!--ul style="list-style:none"-->
 <ul>
@@ -82,17 +82,17 @@ body {
 <p><span translatable="yes">First we will consider ways in which we can configure the language (5), with the two buttons and check box in this section:</span></p>
 <ul>
 <li><span translatable="yes">PrimerPrep program uses the industry-standard Unicode character properties to determine whether characters are word-forming or word-breaking<a href="#footnote2"><sup>2</sup></a>. To modify this default behavior, click the <strong>Word-Breaking Characters</strong> button (5). You will see the dialog shown below, with two columns of letters. If you want to change the category of a letter (from word-breaking to word-forming, or vise versa), double-click on it to move it to the other column. For example, you could double-click on the hyphen character “-” to move it to the Word-Forming column, and PrimerPrep would then consider a word with a hyphen in the middle as one contiguous word. Click OK to close the dialog, and if you have made changes, PrimerPrep reminds you that all of the data will be reprocessed. The space character is always considered word-breaking, but does not show up in the list.</span><br>
-<img style="margin:1em;" width="311" src="PrimerPrepWordBreak.png" alt="Word Break dialog"></li>
+<img style="margin:1em;" width="311" src="es_ES\PrimerPrepWordBreak.png" alt="Word Break dialog"></li>
 
 <li><span translatable="yes">Click the <strong>Digraphs</strong> button (5) to show the Digraphs dialog. Edit the text in this dialog with the digraphs in your language (two or more characters that are treated as a single letter in the orthography), putting spaces between them to separate them:</span><br>
-<img style="margin:1em;" width="416" src="PrimerPrepDigraph.png" alt="Digraph dialog"></li>
+<img style="margin:1em;" width="416" src="es_ES\PrimerPrepDigraph.png" alt="Digraph dialog"></li>
 
 <li><span translatable="yes">Click the check box labelled <strong>Treat Combining Diacritics Separately</strong> (5) if you want combining diacritics to be considered as separate characters in the analaysis. The default is to include a combining diacritic with its preceding base character, e.g. “a” followed by <tt>U+0301 Combining Acute Accent</tt> ◌́ appears as a single character “á” so PrimerPrep treats it as a single character. But if you are using combining diacritics as tone in the language, you may want to treat those characters separately. Checking this box will do just that, so that combining diacritic characters will appear as separate characters in the teaching order.</span></li>
 </ul>
 
 <h4 id="edit_affix"><span translatable="yes">Editing Affixes</span></h4>
 <p><span translatable="yes">You can also define affixes, which PrimerPrep will break off from the words in the word list. Define those affixes by clicking on the Edit Affixes button (6). Edit the text in this dialog with the affixes in your language, putting spaces between them to separate them:</span></p>
-<img style="margin-left:3em;" width="402" src="PrimerPrepAffix.png" alt="Affix dialog">
+<img style="margin-left:3em;" width="402" src="es_ES\PrimerPrepAffix.png" alt="Affix dialog">
 <p><span translatable="yes">Make sure that each affix starts with a hyphen “-” (for suffixes) or ends with a hyphen (for prefixes). PrimerPrep is very strict on this requirement, and will not let you click OK if you haven&rsquo;t correctly defined the affixes. If you cannot find the error that prevents you from closing the dialog box, click Cancel and try again. Once you have defined your affixes, PrimerPrep will update the word list and mark the affixes as gray text. (See the screen shot below.)</span></p>
 <p><span translatable="yes">PrimerPrep just blindly marks the affixes it is given on each word in the list. But sometimes a word looks like it has an affix (starts or ends with the right sequence of letters), but those letters are actually part of the root. In this case, you can edit the affixes of a particular word manually, by double-clicking on the word in the word list. You can use the Filter box just above the word list (8) to quickly find words with a common string, like the affix “-iin”. (Note that this filter would find any word that contained the string “iin”, not just suffixes.)</span></p>
 <img style="margin-left:3em;" width="215" src="PrimerPrepFilter.png" alt="Word list filter">
@@ -125,14 +125,14 @@ body {
 <h4 id="sight_words"><span translatable="yes">Adding and Removing Sight Word Lessons</span></h4>
 <p><span translatable="yes">No matter what order you introduce the letters, it will be difficult to form interesting texts with just the letters introduced in the first few lessons. For this reason, many literacy specialists use “sight words”<a href="#footnote3" id="fnanchor3"><sup>3</sup></a> in their early primer lessons. These are words that students are taught to memorize as a whole, by sight, so that they can recognize them and read them without having to use decoding skills.</span></p>
 <p><span translatable="yes">To add a sight word lesson in PrimerPrep, select the location in the teaching order where you want to insert the sight words (in this example we select the lesson for the letter “t”), then click on the Add Sight Words button (13). In the dialog box that appears, enter the sight word(s) that you want to introduce at that point in the primer, then click OK:</span></p>
-<img style="margin-left:3em;" width="424" src="PrimerPrepAddSightWords.png" alt="Add sight words">
+<img style="margin-left:3em;" width="424" src="es_ES\PrimerPrepAddSightWords.png" alt="Add sight words">
 <p><span translatable="yes">Sight words are added in PrimerPrep as separate lesson lines in the teaching order (marked with two eyes <img width="30" src="PrimerPrepSightWordsSymbol.png">, to represent sight), but they could obviously be introduced to the student in a lesson of an adjacent letter. (For that matter, even though two letters are on separate lines, they could be introduced in the same primer lesson, depending on your teaching methodology.) So in the example below, we may actually want to introduce <strong>wileed</strong> <em>boy</em> (16) as a sight word in the lesson that introduces the letter “t”, the lesson immediately following the sight word lesson:</span></p>
 <img style="margin-left:3em;" width="701" src="PrimerPrepNewSightWords.png" alt="Sight words">
 <p><span translatable="yes">The sight word lessons, once created, are handled much like the lessons for letters in the teaching order. You can adjust their positions in the list by using the same drag-and-drop operation. But unlike the letter lessons, if you select a sight word lesson, the <strong>Remove Sight Words</strong> button at the bottom becomes active, and if you click that button, the sight word lesson will be deleted. There is no undo option, but it is easy enough to add the sight word lesson again.</span></p>
 
 <h3 id="lesson_texts"><span translatable="yes">Lesson Texts</span></h3>
 <p><span translatable="yes">The last major feature of PrimerPrep is the ability to enter and check your lesson texts at each stage in the teaching order. Click on the Lesson Texts tab (15) to see the (currently empty) text for the currently selected lesson. In this case the lesson for the letter “t” was still selected:</span></p>
-<img style="margin-left:3em;" width="701" src="PrimerPrepLessonTexts.png" alt="Lesson Texts tab">
+<img style="margin-left:3em;" width="701" src="es_ES\PrimerPrepLessonTexts.png" alt="Lesson Texts tab">
 <p><span translatable="yes">Click in the empty text field and type or paste the letters, words and texts that you propose to put in this lesson. For example, you might have syllable practice, word-forming drills, and example texts, something like the following:</span></p>
 <img style="margin-left:3em;" width="701" src="PrimerPrepLessonTextsNew.png" alt="Lesson Texts example">
 <p><span translatable="yes">You can see that these exercises all consist of letters that have already been taught, namely l, a, w, h and t. Note, however, that the word <strong>wileed</strong> has letters that have not yet been taught (i and e) <strong>but</strong> this is the sight word that we introduced just before (or as part of) this lesson, so it is acceptable content in this lesson.</span></p>
@@ -146,14 +146,14 @@ body {
 
 <h3 id="menus"><span translatable="yes">Menus</span></h3>
 <p><span translatable="yes">Some additional options are available in the program menus.</span></p>
-<img style="margin-left:3em;" width="423" src="PrimerPrepFileMenu.png" alt="File menu">
+<img style="margin-left:3em;" width="423" src="es_ES\PrimerPrepFileMenu.png" alt="File menu">
 <p><span translatable="yes">The <strong>File menu</strong> has options for <strong>saving and loading a project</strong>, with all of its data, teaching order, sight word lessons and lesson texts. This allows returning to a given point in your primer analysis, without going through the work of reloading texts, defining words and affixes, modifying the teaching order, and entering lesson texts again.</span></p>
 <p><span translatable="yes">There are options in this menu for <strong>saving the teaching order</strong> or <strong>saving the word list</strong>. In both cases, they are saved as plain text files with columns separated by tabs. These can be opened with a text editor like NotePad, or with a spreadsheet program like LibreOffice Calc or Microsoft Excel.</span></p>
 <p><span translatable="yes">And there is a menu item for <strong>quitting the program</strong>, with a shortcut Ctrl+Q, or simply closing the program window.</span></p>
-<img style="margin-left:3em;" width="423" src="PrimerPrepConfigureMenu.png" alt="Configure menu">
+<img style="margin-left:3em;" width="423" src="es_ES\PrimerPrepConfigureMenu.png" alt="Configure menu">
 <p><span translatable="yes">The <strong>Configure menu</strong> has an option to <strong>Select the Text Font</strong>. PrimerPrep uses the &lsquo;Charis SIL&rsquo; font by default for all of the vernacular language text. This is a very good general-purpose font for Roman script languages, and may very well cover all of your needs. This font should be installed with the PrimerPrep program. <strong>If your characters are not appearing correctly</strong> it probably means either the &lsquo;Charis SIL&rsquo; font is no longer installed (go to <a href="https://software.sil.org/charis/download/">https://software.sil.org/charis/download/</a> for instructions on downloading and installing this font), or you may have a non-Roman script orthography for your language. In this case use this menu option to select an appropriate font for displaying the language. The PrimerPrep program should be able to handle right-to-left scripts such as Arabic or Hebrew.</span></p>
 <p><span translatable="yes">This menu also has an option to <strong>change the user interface</strong> between English and several other languages.</span></p>
-<img style="margin-left:3em;" width="417" src="PrimerPrepHelpMenu.png" alt="Help menu">
+<img style="margin-left:3em;" width="417" src="es_ES\PrimerPrepHelpMenu.png" alt="Help menu">
 <p><span translatable="yes">And finally, there is a <strong>Help menu</strong> which can open this <strong>help</strong> page, or provide some information <strong>about</strong> the PrimerPrep program.</span></p>
 
 
