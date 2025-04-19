@@ -1,6 +1,6 @@
 @echo off
 REM Use this batch file to download translations from Crowdin. The two .po files 
-REM (PrimerPrep.po and PrimerPrepHelp.po) will be REM placed in subfolders of
+REM (PrimerPrep.po and PrimerPrepHelp.po) will be placed in subfolders of
 REM locale/ by language code, e.g. locale/fr_FR/LC_MESSAGES/. The localized images
 REM for the Help web page are loaded into Help/ by language code, e.g. Help/fr_FR.
 REM

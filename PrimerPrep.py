@@ -15,9 +15,19 @@
 #
 # by Jeff Heath, SIL Chad
 #
-# © 2024 SIL International
+# © 2025 SIL Global
 #
 # Modifications:
+# 3.38 JCH Mar 2025
+#    Verify and note input text normalization (composition NFC and NFD), if inconsistent give warning
+#    Increase the dataModelVersion to 2 (as we need some normalization variables), handle loading old data
+#    Decompose (NFD) all text for PrimerPrep analysis, export data consistent with input texts
+#    In marking untaught residue, NFC text must be made NFD, but defer to after event handler to avoid warnings
+#    In marking untaught residue, use character offsets rather than iterators
+#    In TeachingOrder double-click, give message if no phrases are available
+#    Instantiate the event handler (rather than just using the static class)
+# 3.37 JCH Jul 2024
+#    Confirm overwriting data when opening a project
 # 3.36 JCH Jul 2024
 #    Improve project handling - add new menus (New, Open, Save, Save As)
 #    Add .ppdata extension to project file name if it's not there, but allow user to modify
@@ -131,9 +141,9 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.36"
-progYear = "2024"
-dataModelVersion = 1
+progVersion = "3.38"
+progYear = "2025"
+dataModelVersion = 2
 DEBUG = False
 
 import sys
@@ -148,7 +158,7 @@ if sys.version_info[0] < 3:
     exit()
 from gi import require_version
 require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, Pango
+from gi.repository import Gtk, Gdk, Pango, GLib
 import os
 import subprocess
 import platform
@@ -180,6 +190,8 @@ myGlobalProjectName = ''
 myGlobalRenderer = None
 #  global variable to hold the Glade builder - needed for loading UI elements
 myGlobalBuilder = None
+#  global variable to hold the event handlers
+myGlobalHandler = None
 # global variable to hold the main window - needed as parent for various dialogs
 myGlobalWindow = None
 # global variable for the interface language (English by default)
@@ -829,6 +841,12 @@ class WordAnalysis:
             SimpleMessage(title, 'dialog-information', msg)
             return False
         
+        # check the lines for encoding errors
+        self.CheckEncoding(lines)
+        
+        # convert this new data (from the file just loaded) to NFD encoding
+        lines = [unicodedata.normalize('NFD', line) for line in lines]
+        
         # store the file name/path, and all the lines in the file
         self.fileNames.append(file)
         self.fileLines.append(lines)
@@ -837,6 +855,39 @@ class WordAnalysis:
         self.FindChars(lines)
         self.FindWords(lines)
         return True
+    
+    def CheckEncoding(self, lines):
+        '''Check the encoding of the given lines.
+        
+        Check for the presence of composed/decomposed characters. If inconsistent, warn the user
+        and offer to convert everything to decomposed.
+        
+        Parameter: lines (list of str) - lines of text to be analyzed
+        '''
+        if self.userInformedEncodingError:
+            # user already knows that data is inconsistent, and has made a choice about decomposition
+            return
+        
+        # scan through the lines looking for composed and decomposed characters
+        for line in lines:
+            if not self.containsNFC and line != unicodedata.normalize('NFD', line):
+                self.containsNFC = True
+            if not self.containsNFD and line != unicodedata.normalize('NFC', line):
+                self.containsNFD = True
+            if self.containsNFC and self.containsNFD:
+                # exit the loop early if both flags are set
+                break
+        
+        # if we have inconsistent encoding, and user hasn't been informed, then inform the user
+        if self.containsNFC and self.containsNFD and not self.userInformedEncodingError:
+            title = _("Encoding error")
+            msg = _("""Warning: Your input data has inconsistent encoding, with some characters composed
+and some decomposed. This is likely due to using different keyboards to type the data.
+Your original files will NOT be modified, but you should ask a consultant to help you
+make your data more consistent. Any outputs from PrimerPrep (word list, teaching order)
+will be output in decomposed format.""")
+            SimpleMessage(title, 'dialog-warning', msg)
+            self.userInformedEncodingError = True
     
     def CheckIfSFM(self, file):
         '''Check if the file is an SFM file, and configure appropriately.
@@ -922,7 +973,7 @@ class WordAnalysis:
     def FindChars(self, lines):
         '''Takes a list of lines and for each line, check each character
         (making sure to combine diacritics or not) and record it as
-        word forming or word breakinng.
+        word forming or word breaking.
         
         Parameter: lines (list of str) - lines of text to be analyzed
         '''
@@ -973,7 +1024,6 @@ class WordAnalysis:
     def FindWords(self, lines):
         '''Takes a list of lines and for each line, break it into words which
         are added into the words dictionary (which keeps a frequency count).
-        Also do auto-search for digraphs in each word.
         
         Parameter: lines (list of str) - lines of text to be analyzed
         '''
@@ -1294,6 +1344,7 @@ class WordAnalysis:
                 text = myGlobalWindow.theSightWordsDialog.GetSightWords()
                 text = text.strip()
                 text = text.lower()
+                text = unicodedata.normalize('NFD', text)
                 sightWordList = re.split(r'\s+', text)
                 # assume we have a valid input
                 valid = True
@@ -1450,6 +1501,10 @@ class WordAnalysis:
                 # only display a concordance if we have data
                 # create and run a class instance of ConcordanceDialog
                 myGlobalWindow.theConcordanceDialog.Run(letter, phrases)
+            else:
+                title = _("Information")
+                msg = _("No phrases of two or more words available.")
+                SimpleMessage(title, 'dialog-information', msg)
     
     def GetTeachingOrderText(self):
         '''Build a text version of the teaching order list.
@@ -1479,14 +1534,26 @@ class WordAnalysis:
             txt += dispLetter+'\t'+ str(cnt)+'\t'+wordList+'\n'
         return txt
     
-    def ReprocessTexts(self):
-        '''Reprocess all texts (given modified word break character information)
+    def ReprocessTextsForChars(self):
+        '''Reprocess all texts to find chars (e.g. if diacritics are now separated)
+        '''
+        # start with new character lists
+        self.chars = {' ': 1, '\xa0': 1}
+        self.wordBreakChars = [' ', '\xa0']  # must include space and no-break space
+        self.wordFormChars = []
+        # add all characters from the text data
+        for lines in self.fileLines:
+            #logger.debug('Reprocessing:', self.fileNames[i].encode('utf-8'), ' for chars')
+            self.FindChars(lines)
+    
+    def ReprocessTextsForWords(self):
+        '''Reprocess all texts to find words (e.g. given modified word break character information)
         '''
         # clear out current word data
         self.words = {}
         # find words in each file again
         for i in range(len(self.fileNames)):
-            #logger.debug('Reprocessing:', self.fileNames[i].encode('utf-8'))
+            #logger.debug('Reprocessing:', self.fileNames[i].encode('utf-8'), ' for words')
             self.FindWords(self.fileLines[i])
     
     def ProcessAffixes(self):
@@ -1556,6 +1623,7 @@ class WordAnalysis:
                 text = myGlobalWindow.theAffixesDialog.GetAffixes()
                 text = text.strip()
                 text = text.lower()
+                text = unicodedata.normalize('NFD', text)
                 affixList = re.split(r'\s+', text)
                 # assume we have a valid input
                 valid = True
@@ -1627,6 +1695,7 @@ class WordAnalysis:
                 text = myGlobalWindow.theDigraphsDialog.GetDigraphs()
                 text = text.strip()
                 text = text.lower()
+                text = unicodedata.normalize('NFD', text)
                 digraphList = re.split(r'\s+', text)
                 # assume we have a valid input
                 valid = True
@@ -1723,6 +1792,7 @@ class WordAnalysis:
                         myGlobalWindow.theWordEditDialog.divideBuffer.get_end_iter(), False)
                     text = text.strip()
                     text = text.lower()
+                    text = unicodedata.normalize('NFD', text)
                     morphemeList = re.split(r'\s+', text)
                     if morphemeList == [''] or morphemeList == ['', '']:
                         # empty list is not valid in this context
@@ -1991,6 +2061,13 @@ Please try again.""")
         self.fileLines = []
         # note that fileLines[n] is a list of lines in fileNames[n]
         
+        # flag for if the data contains NFC composed characters
+        self.containsNFC = False
+        # flag for if the data contains NFD decomposed characters
+        self.containsNFD = False
+        # flag for if the user has been warned about inconsistent encoding
+        self.userInformedEncodingError = False
+        
         # chars: dictionary of { char: 1 } for all characters used in all texts
         self.chars = {' ': 1, '\xa0': 1}
         # lists of characters that are used for word breaking or word forming
@@ -2115,7 +2192,8 @@ class Handler:
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             filetext = myGlobalWindow.analysis.GetTeachingOrderText()
-            myGlobalWindow.WriteFile(filename, filetext)
+            # write out the data
+            myGlobalWindow.WriteFile(filename, filetext, myGlobalWindow.analysis.containsNFC, myGlobalWindow.analysis.containsNFD)
             # save this path for next time we need to write out a file
             myGlobalPath = os.path.dirname(filename)
         chooser.destroy()
@@ -2152,7 +2230,8 @@ class Handler:
                 else:
                     #  print out word, count, and affix form
                     filetext = filetext + word + '\t' + str(word_info[kWordCnt]) + '\t' + word_info[kWordAffixForm] + '\n'
-            myGlobalWindow.WriteFile(filename, filetext)
+            # write out the data
+            myGlobalWindow.WriteFile(filename, filetext, myGlobalWindow.analysis.containsNFC, myGlobalWindow.analysis.containsNFD)
             # save this path for next time we need to write out a file
             myGlobalPath = os.path.dirname(filename)
         chooser.destroy()
@@ -2161,11 +2240,10 @@ class Handler:
         '''Process the Configure > Select the Text Font menu, to choose display font.'''
         global myGlobalWindow
         global myGlobalRenderer
-        
         if myGlobalRenderer.SelectFont():
             myGlobalWindow.ApplyFonts()
     
-    def on_interfaceMenuItem_activate(self, lang, idx):
+    def on_interfaceMenuItem_activate(self, widget, lang, idx):
         global myGlobalWindow
         global myGlobalConfig
         global _
@@ -2217,19 +2295,19 @@ class Handler:
         title = _("About")
         msg = "PrimerPrep version " + progVersion
         msg += "\n" + _("Developed by Jeff Heath, SIL Chad") + "\n\n"
-        msg += "© " + progYear + " SIL International\n\n"
+        msg += "© " + progYear + " SIL Global\n\n"
         msg += _("""This is a tool that helps in preparing a primer.
 The program loads language texts, counts words
 and letters, and suggests a teaching order for
 introducing the letters in a primer.""")
         SimpleMessage(title, "dialog-information", msg)
     
-    def on_addTextsButton_clicked(self, button):
+    def on_addTextsButton_clicked(self, *args):
         '''Using a FileChooserDialog, allow user to select and open file(s) for analysis.'''
         # run the open file dialog, and handle loading any file(s) chosen
         myGlobalWindow.AddTexts()
     
-    def on_chooseLexiconButton_clicked(self, button):
+    def on_chooseLexiconButton_clicked(self, *args):
         '''Using a FileChooserDialog, allow user to select and open a lexicon file
         (LIFT or SFM format file).
         '''
@@ -2291,7 +2369,7 @@ introducing the letters in a primer.""")
             msg = _("The list of word-breaking characters changed, so all\nof the text data is being reprocessed.")
             SimpleMessage(title, "dialog-warning", msg)
             # ask the WordAnalysis object to reprocess all texts again
-            myGlobalWindow.analysis.ReprocessTexts()
+            myGlobalWindow.analysis.ReprocessTextsForWords()
             # display the updated results
             myGlobalWindow.analysis.UpdateWordList(myGlobalWindow.wordListStore)
             myGlobalWindow.ShowSummaryStatusBar()
@@ -2316,11 +2394,7 @@ introducing the letters in a primer.""")
         myGlobalWindow.analysis.teachingOrderChanged = True
         
         # rebuild the character lists, since they could be different now
-        myGlobalWindow.analysis.chars = {' ': 1, '\xa0': 1}
-        myGlobalWindow.analysis.wordBreakChars = [' ', '\xa0']  # must include space and no-break space
-        myGlobalWindow.analysis.wordFormChars = []
-        for lines in myGlobalWindow.analysis.fileLines:
-            myGlobalWindow.analysis.FindChars(lines)
+        myGlobalWindow.analysis.ReprocessTextsForChars()
     
     def on_filterTextEntry_changed(self, widget):
         wordListTreeModelFilter = myGlobalBuilder.get_object("wordListTreeModelFilter")
@@ -2414,11 +2488,13 @@ introducing the letters in a primer.""")
                 #myGlobalWindow.teachingOrderTreeView.get_selection().select_iter(row.iter)
                 break
     
-    def on_teachingOrderTreeView_change(self):
+    def on_teachingOrderTreeView_change(self, selection):
         '''User changed the lesson that is selected, so enable/disable the Remove Sight Words button.
-        Keep lesson text selection in sync.'''
-        sel = myGlobalWindow.teachingOrderTreeView.get_selection()
-        (model, row) = sel.get_selected()
+        Keep lesson text selection in sync.
+        
+        Parameter: selection - new lesson selected
+        '''
+        (model, row) = selection.get_selected()
         if row is not None:
             letter = model[row][0]
             if letter == "\u2686\u2686":
@@ -2432,11 +2508,13 @@ introducing the letters in a primer.""")
             myGlobalWindow.lessonTextsTreeView.get_selection().select_path(model.get_path(row))
             myGlobalWindow.lessonTextsTreeView.set_cursor(model.get_path(row))
     
-    def on_lessonTextsTreeView_change(self):
+    def on_lessonTextsTreeView_change(self, selection):
         '''User changed the lesson that is selected, so update the text displayed.
-        Keep teaching order selection in sync.'''
-        sel = myGlobalWindow.lessonTextsTreeView.get_selection()
-        (model, row) = sel.get_selected()
+        Keep teaching order selection in sync.
+        
+        Parameter: selection - new lesson selected
+        '''
+        (model, row) = selection.get_selected()
         if row is not None:
             myGlobalWindow.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
             
@@ -2464,9 +2542,9 @@ introducing the letters in a primer.""")
         # make sure cursor is at the end of any existing text
         myGlobalWindow.lessonTextsTextBuffer.place_cursor(myGlobalWindow.lessonTextsTextBuffer.get_end_iter())
     
-    def on_lessonTextsTextBuffer_changed(self, widget, data=None):
+    def on_lessonTextsTextBuffer_changed(self, buffer):
         global myGlobalWindow
-        myGlobalWindow.MarkUntaught(widget)
+        myGlobalWindow.MarkUntaught(buffer)
         myGlobalWindow.analysis.dataChanged = True
     
     def on_notebook_switch_page(self, notebook, tab, index):
@@ -2525,7 +2603,7 @@ class PrimerPrepWindow:
       lessonTextsTreeView - TreeView object, displays teaching order for the Lesson Texts tab
     '''
     
-    def WriteFile(self, filename, filetext):
+    def WriteFile(self, filename, filetext, containsNFC, containsNFD):
         '''Internal class routine for writing the given text to the given file.
         The check for a pre-existing file will have been done before calling this method.
         User will be notified of any errors in writing the file.
@@ -2533,7 +2611,19 @@ class PrimerPrepWindow:
         Parameters: filename (str) - full file name/path
                     filetext (str) - multiline string of contents of file to write
         '''
-        #logger.debug('Saving as:', filename)
+        logger.debug('Saving as:', filename)
+        
+        if containsNFC:
+            if not containsNFD:
+                # the data needs to be written out in NFC format
+                filetext = unicodedata.normalize('NFC', filetext)
+            else:
+                # warn the user that data is written out decomposed
+                title = _("Encoding error")
+                msg = _("""Warning: This is a reminder that your input data has inconsistent encoding,
+with some characters composed and some decomposed. This data will be saved in
+decomposed format, which may be different than your original source files.""")
+                SimpleMessage(title, 'dialog-warning', msg)
         try:
             save_file = open(filename, 'w', encoding='utf-8')
             # write a byte-order mark (BOM) for better file identification
@@ -2581,7 +2671,7 @@ class PrimerPrepWindow:
         # clear out list stores and update status bar
         fileList = myGlobalBuilder.get_object("fileListStore")
         fileList.clear()
-        self.filterTextEntry.set_text('')
+        self.filterTextEntry.set_text("")
         self.wordListStore.clear()
         # clear the text, so we don't try to mark untaught residue
         text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
@@ -2591,6 +2681,7 @@ class PrimerPrepWindow:
         # make sure there is no project name, including in the window title
         myGlobalProjectName = ""
         self.window.set_title("PrimerPrep")
+        # may not be on the first notebook tab, but can't change without warning so just leave it...
     
     def SaveProject(self):
         '''Save the project configuration, using the already specified filename
@@ -2690,6 +2781,15 @@ class PrimerPrepWindow:
         global myGlobalProjectName
         global myGlobalRenderer
         
+        if self.analysis.dataChanged:
+            # confirm clearing data
+            title = _("Confirm clear data")
+            msg = _("There is unsaved data. Open a project anyway?")
+            if not SimpleYNQuestion(title, 'dialog-warning', msg):
+                # no, we shouldn't quit
+                return
+        # either data hasn't changed since last save or user confirmed to continue anyway
+        
         msg = _("Choose project to open...")
         chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
                                         action=Gtk.FileChooserAction.OPEN)
@@ -2716,12 +2816,44 @@ class PrimerPrepWindow:
                 try:
                     with open(filename, 'rb') as f:
                         vernum = pickle.load(f)
-                        if not isinstance(vernum, int) or vernum not in (1, ):
+                        if not isinstance(vernum, int) or vernum not in (1, 2, ):
                             # this is not a project file that we know how to load
                             raise UnknownProjectType
                         
                         del self.analysis
                         self.analysis = pickle.load(f)
+                        
+                        # initially there are no changes (so you can quit without confirmation)
+                        # but note that teachingOrderChanged could be true, so rebuild might be necessary
+                        self.analysis.dataChanged = False
+                        
+                        if vernum == 1:
+                            # new fields need to be added
+                            self.analysis.containsNFC = False
+                            self.analysis.containsNFD = False
+                            self.analysis.userInformedEncodingError = False
+                            # we need to make sure that all data is NFD
+                            fileLinesNFD = []
+                            for lines in self.analysis.fileLines:
+                                # process this list of text lines (from each file)
+                                # sets containsNFC and NFD and gives warning if inconsistent
+                                self.analysis.CheckEncoding(lines)
+                                # make sure this data (set of lines) is in NFD encoding
+                                linesNFD = [unicodedata.normalize('NFD', line) for line in lines]
+                                # add this normalized set of text lines to the files list
+                                fileLinesNFD.append(linesNFD)
+                            # save the normalized text lines as the new
+                            self.analysis.fileLines = fileLinesNFD
+                            self.analysis.dataChanged = True
+                        else:
+                            if self.analysis.containsNFC and self.analysis.containsNFD:
+                                # warn the user that this data contains inconsistent encoding
+                                title = _("Encoding error")
+                                msg = _("""Warning: This is a reminder that your input data has inconsistent encoding,
+with some characters composed and some decomposed. Ask a consultant to help you
+make your data more consistent. Any outputs from PrimerPrep (word list, teaching order)
+will be output in decomposed format.""")
+                                SimpleMessage(title, 'dialog-warning', msg)
                         
                         # load and unpack the options tuple, and set the options
                         options = pickle.load(f)
@@ -2756,10 +2888,6 @@ class PrimerPrepWindow:
                         menu.set_sensitive(True)
                     else:
                         menu.set_sensitive(False)
-                        
-                    # there are no changes (so you can quit without confirmation)
-                    # but note that teachingOrderChanged could be true, so a rebuild of that might be necessary
-                    self.analysis.dataChanged = False
                     
                     # because teaching order rebuild may be necessary, it's good to start on first notebook tab
                     self.mainNB.set_current_page(0)
@@ -2825,14 +2953,27 @@ class PrimerPrepWindow:
                 self.ShowSummaryStatusBar()
         chooser.destroy()
     
-    def MarkUntaught(self, widget):
+    def _save_normalized_lessontext(self, buffer, textNFD):
+        # set_text, which will emit "changed" and call MarkUntaught again
+        buffer.set_text(textNFD)
+        return False  # Stop idle_add
+    
+    def MarkUntaught(self, buffer):
         '''The lesson text changed. Tag untaught words/letters with 'self.untaughtTag'.
         This involves checking individual words for sight words, and individual graphemes.
         
-        Parameters: widget - TextBuffer
+        Parameters: buffer - TextBuffer
         TODO: If a lesson has a character that doesn't appear at all in the loaded texts,
         it is treated as untaught residue. Is that correct?
         '''
+        # first check buffer for any NFC characters, and convert them to NFD
+        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False).lower()
+        textNFD = unicodedata.normalize('NFD', text)
+        if (text != textNFD):
+            # defer normalization so we don't modify the buffer inside a signal handler
+            GLib.idle_add(self._save_normalized_lessontext, buffer, textNFD)
+            return
+        
         # find out which lesson is selected, to know what letters/sight words have been taught
         sel = self.teachingOrderTreeView.get_selection()
         (model, row) = sel.get_selected()
@@ -2840,7 +2981,7 @@ class PrimerPrepWindow:
             # there is no row selected, or there is no teachingOrder,
             # so whatever is there should be marked as untaught residue
             # this probably only happens when there is an empty teaching order...
-            widget.apply_tag(self.untaughtTag, widget.get_start_iter(), widget.get_end_iter())
+            buffer.apply_tag(self.untaughtTag, buffer.get_start_iter(), buffer.get_end_iter())
             return
         
         # get path and index of selected row
@@ -2901,19 +3042,23 @@ class PrimerPrepWindow:
         # start in "taught" section
         inTaughtSection = True
         
+        # get the buffer text to process
+        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False).lower()
+        # the text should already be NFD, but this is a final safety check
+        textNFD = unicodedata.normalize('NFD', text)
+        if (text != textNFD):
+            raise RuntimeError("Found unexpected NFC text")
+        
         # initialize loop variables
-        start_iter = widget.get_start_iter()
-        end_iter = start_iter.copy()
-        text = widget.get_text(start_iter, widget.get_end_iter(), False).lower()
         pos = 0
         secStart = 0
-        #
+        
         # loop over entire text
         # - find the next word, up to the next wordbreak character(s), and see if it's a sightword
         # - if sightword, mark as taught
         # - if not, go through the word one grapheme at a time and mark taught/untaught as appropriate
         # - wordbreak characters are considered taught
-        #
+        
         while pos < len(text):
             # find next word (this will always match, but sometimes will give empty string)
             m = findWordChunk.match(text, pos)
@@ -2923,7 +3068,7 @@ class PrimerPrepWindow:
             wordBreaksLength = len(m.group(2))
             endWordPos = pos + wordLength
             if nextWord in sightWords:
-                #print("INFO: taught sightword ({}-{})".format(pos, endWordPos))
+                logger.debug("taught sightword ({}-{})".format(pos, endWordPos))
                 # we were already in (taught) wordbreak characters, so just continue
                 pos = endWordPos
                 continue
@@ -2936,10 +3081,10 @@ class PrimerPrepWindow:
                     if inTaughtSection:
                         # switch taught/untaught section
                         if pos > secStart:
-                            end_iter.forward_chars(pos-secStart)
-                            widget.remove_tag(self.untaughtTag, start_iter, end_iter)
-                            start_iter = end_iter.copy()
-                            #print("taught ({}-{})".format(secStart, pos))
+                            buffer.remove_tag(self.untaughtTag,
+                                              buffer.get_iter_at_offset(secStart), 
+                                              buffer.get_iter_at_offset(pos))
+                            logger.debug("taught ({}-{})".format(secStart, pos))
                             secStart = pos
                         inTaughtSection = False
                     # move to the next character
@@ -2952,10 +3097,10 @@ class PrimerPrepWindow:
                         if not inTaughtSection:
                             # switch taught/untaught section
                             if pos > secStart:
-                                end_iter.forward_chars(pos-secStart)
-                                widget.apply_tag(self.untaughtTag, start_iter, end_iter)
-                                start_iter = end_iter.copy()
-                                #print("untaught ({}-{})".format(secStart, pos))
+                                buffer.apply_tag(self.untaughtTag,
+                                                  buffer.get_iter_at_offset(secStart), 
+                                                  buffer.get_iter_at_offset(pos))
+                                logger.debug("untaught ({}-{})".format(secStart, pos))
                                 secStart = pos
                             inTaughtSection = True
                     else:
@@ -2963,10 +3108,10 @@ class PrimerPrepWindow:
                         if inTaughtSection:
                             # switch taught/untaught section
                             if pos > secStart:
-                                end_iter.forward_chars(pos-secStart)
-                                widget.remove_tag(self.untaughtTag, start_iter, end_iter)
-                                start_iter = end_iter.copy()
-                                #print("taught ({}-{})".format(secStart, pos))
+                                buffer.remove_tag(self.untaughtTag,
+                                                  buffer.get_iter_at_offset(secStart), 
+                                                  buffer.get_iter_at_offset(pos))
+                                logger.debug("taught ({}-{})".format(secStart, pos))
                                 secStart = pos
                             inTaughtSection = False
                     # move past this grapheme
@@ -2977,10 +3122,10 @@ class PrimerPrepWindow:
                 if not inTaughtSection:
                     # switch taught/untaught section
                     if pos > secStart:
-                        end_iter.forward_chars(pos-secStart)
-                        widget.apply_tag(self.untaughtTag, start_iter, end_iter)
-                        start_iter = end_iter.copy()
-                        #print("untaught ({}-{})".format(secStart, pos))
+                        buffer.apply_tag(self.untaughtTag,
+                                          buffer.get_iter_at_offset(secStart), 
+                                          buffer.get_iter_at_offset(pos))
+                        logger.debug("untaught ({}-{})".format(secStart, pos))
                         secStart = pos
                     inTaughtSection = True
                 pos += wordBreaksLength
@@ -2988,17 +3133,17 @@ class PrimerPrepWindow:
         # report final section
         if inTaughtSection:
             if pos > secStart:
-                end_iter.forward_chars(pos-secStart)
-                widget.remove_tag(self.untaughtTag, start_iter, end_iter)
-                start_iter = end_iter.copy()
-                #print("taught ({}-{})".format(secStart, pos))
+                buffer.remove_tag(self.untaughtTag,
+                                  buffer.get_iter_at_offset(secStart), 
+                                  buffer.get_iter_at_offset(pos))
+                logger.debug("taught ({}-{})".format(secStart, pos))
         else:
             if pos > secStart:
-                end_iter.forward_chars(pos-secStart)
-                widget.apply_tag(self.untaughtTag, start_iter, end_iter)
-                start_iter = end_iter.copy()
-                #print("untaught ({}-{})".format(secStart, pos))
-    
+                buffer.apply_tag(self.untaughtTag,
+                                  buffer.get_iter_at_offset(secStart), 
+                                  buffer.get_iter_at_offset(pos))
+                logger.debug("untaught ({}-{})".format(secStart, pos))
+        
     def SaveLessonText(self, grapheme):
         # save out the current text into the entry for the previously selected grapheme
         if self.analysis.selectedGrapheme is not None:
@@ -3135,6 +3280,7 @@ class PrimerPrepWindow:
         '''
         global myGlobalBuilder
         global myGlobalRenderer
+        global myGlobalHandler
         
         # create an instance of WordAnalysis to store our data
         self.analysis = WordAnalysis()
@@ -3191,7 +3337,7 @@ class PrimerPrepWindow:
         self.window.set_default_direction(Gtk.TextDirection.LTR)
         self.isRTL = False
         # this event is set as default in the .glade file for startup
-        #self.window.connect("delete-event", Handler.on_mainWindow_delete_event)
+        #self.window.connect("delete-event", myGlobalHandler.on_mainWindow_delete_event)
         
         # show the main PrimerPrep window
         self.window.show_all()
@@ -3213,11 +3359,11 @@ class PrimerPrepWindow:
         
         # when a row of the teaching order treeview is selected, it emits a signal
         teachingOrderSelection = self.teachingOrderTreeView.get_selection()
-        teachingOrderSelection.connect("changed", Handler.on_teachingOrderTreeView_change)
+        teachingOrderSelection.connect("changed", myGlobalHandler.on_teachingOrderTreeView_change)
         
         # when a row of the lesson texts treeview is selected, it emits a signal
         lessonTextSelection = self.lessonTextsTreeView.get_selection()
-        lessonTextSelection.connect("changed", Handler.on_lessonTextsTreeView_change)
+        lessonTextSelection.connect("changed", myGlobalHandler.on_lessonTextsTreeView_change)
         
         # need a special handler for the letter column (in teaching order and lesson texts) to set font for sightwords symbol
         self.teachingOrderLetterColumn.set_cell_data_func(self.teachingOrderLetterCellRenderer, self.letter_cell_data_func)
@@ -3274,7 +3420,8 @@ if __name__ == "__main__":
     
     # initialize the global builder first, as we need to look up objects in our setup
     myGlobalBuilder = GtkBuilder("PrimerPrep.glade", APP_NAME)
-    myGlobalBuilder.connect_signals(Handler())
+    myGlobalHandler = Handler()
+    myGlobalBuilder.connect_signals(myGlobalHandler)
     
     # initialize the renderer (and also set up CSS style providers) before the window, since window code needs it
     myGlobalRenderer = VernacularRenderer()
@@ -3282,9 +3429,9 @@ if __name__ == "__main__":
     
     # make sure the English and French interface menu items are connected to the Handler
     menuItem = myGlobalBuilder.get_object("englishInterfaceMenuItem")
-    menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, 'en_US', 0)
+    menuItem.connect("activate", myGlobalHandler.on_interfaceMenuItem_activate, 'en_US', 0)
     menuItem = myGlobalBuilder.get_object("frenchInterfaceMenuItem")
-    menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, 'fr_FR', 1)
+    menuItem.connect("activate", myGlobalHandler.on_interfaceMenuItem_activate, 'fr_FR', 1)
     
     # for internationalization, we load languages from .json file
     with open(os.path.join(locale_path, 'langs.json'), 'r', encoding='utf-8') as f:
@@ -3300,7 +3447,7 @@ if __name__ == "__main__":
         translation_languages.append( ( lang, langs[lang][0], langs[lang][1], langs[lang][2],
                                         gettext.translation(APP_NAME, locale_path, languages=[lang], fallback = True) ) )
         menuItem = Gtk.RadioMenuItem.new_with_label_from_widget(EnglishInterfaceMenu, langs[lang][0])
-        menuItem.connect("activate", Handler.on_interfaceMenuItem_activate, lang, len(translation_languages) - 1)
+        menuItem.connect("activate", myGlobalHandler.on_interfaceMenuItem_activate, lang, len(translation_languages) - 1)
         configMenu.append(menuItem)
         menuItem.set_visible(True)
     
