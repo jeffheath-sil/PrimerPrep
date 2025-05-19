@@ -18,6 +18,10 @@
 # © 2025 SIL Global
 #
 # Modifications:
+# 3.39 JCH May 2025
+#    Solidify application of new fonts, make sure on opening a project that fonts are applied completely
+#    Make association of .ppdata project files with the app (w/ custom icon), to open by double-clicking
+#    Clean up use of global variables - always declare them where used (even read only)
 # 3.38 JCH Mar 2025
 #    Verify and note input text normalization (composition NFC and NFD), if inconsistent give warning
 #    Increase the dataModelVersion to 2 (as we need some normalization variables), handle loading old data
@@ -141,7 +145,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.38"
+progVersion = "3.39"
 progYear = "2025"
 dataModelVersion = 2
 DEBUG = False
@@ -205,7 +209,7 @@ myGlobalNotebookPage = 0
 
 
 # defaults for global CSS (Cascading Style Sheets) formatting
-GlobalCSS = """
+myGlobalCSS = """
 notebook tab {
     background-color: silver;
     border: 1px black;
@@ -249,7 +253,8 @@ class VernacularRenderer:
     '''A class used to hold vernacular font rendering information
     
     Creating an instance of this class loads the standard renderer used
-    in PrimerPrep. Use SelectFont to select/change to a new vernacular font.
+    in PrimerPrep. Use SelectFont to allow the user to select/change to
+    a new vernacular font. Use SetFont to apply a new vernacular font.
     
     Attributes:
       fontName (str) - current font selected for displaying vernacular text
@@ -259,10 +264,26 @@ class VernacularRenderer:
       vernRendererText (Gtk.CellRendererText) - renderer for vernacular text
     '''
     
+    def SetFont(self, fntName):
+        self.fontName = fntName
+        # set up the font description and CellRendererText for vernacular text in TreeViews
+        self.vernFontDesc = Pango.FontDescription(self.fontName)
+        self.vernRendererText.set_property('font-desc', self.vernFontDesc)
+        # parse the fontName to get the family and size
+        m = re.match('(.+) (\d+)$', self.fontName)
+        if m:
+            # set up the CSS vernacular class (which will automatically update fields with this class)
+            # note that we can modify this CSS definition with different vernacular fonts 
+            VernacularCSS = """
+.vernacular {{
+  font-family: '{}', 'Charis SIL', Ubuntu, Gentium, serif;
+  font-size: {}pt;
+}}""".format(m.group(1), m.group(2))
+            self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
+    
     def SelectFont(self):
         '''Let user select a font using the standard dialog, modify vernacular renderer.
         
-        Parameter: parent (Window object) - parent window for centering dialog
         Return value: True if font was selected and changed
         '''
         global myGlobalWindow
@@ -271,54 +292,43 @@ class VernacularRenderer:
         fontDlg.set_font(self.fontName)
         result = fontDlg.run()
         if result == Gtk.ResponseType.OK:
-            self.fontName = fontDlg.get_font()
-            # set up the font description and CellRendererText for vernacular text in TreeViews
-            self.vernFontDesc = Pango.FontDescription(self.fontName)
-            self.vernRendererText.set_property('font-desc', self.vernFontDesc)
-            # parse the fontName to get the family and size
-            m = re.match('(.+) (\d+)$', self.fontName)
-            if m:
-                # set up the CSS vernacular class (which will automatically update fields with this class)
-                VernacularCSS = """
-.vernacular {{
-  font-family: {}, 'Charis SIL Semi-Condensed', 'Charis SIL', Gentium, Ubuntu, serif;
-  font-size: {}pt;
-}}""".format(m.group(1), m.group(2))
-                self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
+            self.SetFont(fontDlg.get_font())
         fontDlg.destroy()
         return result == Gtk.ResponseType.OK
     
     def __init__(self):
         '''Initialize this Renderer object's attributes with the defaults.
         '''
-        # Initially tried Charis SIL Semi-Condensed, but had some difficulties
+        global myGlobalCSS
+        # Had some difficulties with Charis SIL Semi-Condensed?
         if platform.system() == "Windows":
-            self.fontName = "Charis SIL Semi-Condensed 14"
+            fntName = "Charis SIL Semi-Condensed 14"
         else:
-            self.fontName = "Ubuntu 14"
-        #self.fontName = "Gentium 14"
-        # modifiable vernacular class CSS formatting
-        VernacularCSS = """
-.vernacular {
-  font-family: 'Charis SIL Semi-Condensed', 'Charis SIL', Gentium, Ubuntu, serif;
-  font-size: 14pt;
-}"""
+            fntName = "Ubuntu 14"
+        #fntName = "Gentium 14"
+        ## modifiable vernacular class CSS formatting
+        #VernacularCSS = """
+#.vernacular {
+  #font-family: 'Charis SIL Semi-Condensed', 'Charis SIL', Ubuntu, Gentium, serif;
+  #font-size: 14pt;
+#}"""
         
         # set up the global (static) CSS provider
         self.global_style_provider = Gtk.CssProvider()
-        self.global_style_provider.load_from_data(bytes(GlobalCSS.encode()))
+        self.global_style_provider.load_from_data(bytes(myGlobalCSS.encode()))
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), self.global_style_provider,
                                              Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        # set up the vernacular (modifiable) CSS provider
+        # set up the vernacular (modifiable) CSS provider (no style yet)
         self.vernacular_style_provider = Gtk.CssProvider()
-        self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
+        #self.vernacular_style_provider.load_from_data(bytes(VernacularCSS.encode()))
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), self.vernacular_style_provider,
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
         
-        # set up the font description and CellRendererText for vernacular text in TreeViews
-        self.vernFontDesc = Pango.FontDescription(self.fontName)
+        # create the CellRendererText for vernacular text in TreeViews
         self.vernRendererText = Gtk.CellRendererText()
-        self.vernRendererText.set_property('font-desc', self.vernFontDesc)
+        
+        # set the font for the FontDescription/CellRendererText and the VernacularCSS
+        self.SetFont(fntName)
 
 
 class AffixesDialog:
@@ -331,7 +341,6 @@ class AffixesDialog:
     def __init__(self):
         '''Prepare dialog for defining affixes, for running later.'''
         global myGlobalBuilder
-        global myGlobalRenderer
         
         self.dialog = myGlobalBuilder.get_object('affixesDialog')
         self.textview = myGlobalBuilder.get_object('affixesDialogTextView')
@@ -380,7 +389,7 @@ class WordBreaksDialog:
     def __init__(self):
         '''Prepare dialog for defining word breaking/forming characters, for running later.'''
         global myGlobalBuilder
-        global myGlobalRenderer
+        #global myGlobalRenderer
         
         self.dialog = myGlobalBuilder.get_object('wordBreaksDialog')
         self.wordBreakStore = myGlobalBuilder.get_object('wordBreakListStore')
@@ -406,6 +415,9 @@ class WordBreaksDialog:
         self.wordFormTreeView.connect("row-activated", self.on_WordForm_doubleClick)
     
     def Run(self, wordBreakChars, wordFormChars):
+        global myGlobalBuilder
+        global myGlobalRenderer
+        
         # make sure TreeViews are using current vernacular font
         myGlobalBuilder.get_object('wordBreakCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
         myGlobalBuilder.get_object('wordFormCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
@@ -504,7 +516,6 @@ class DigraphsDialog:
     def __init__(self):
         '''Prepare dialog for defining digraphs, for running later.'''
         global myGlobalBuilder
-        global myGlobalRenderer
         
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object('digraphsDialog')
@@ -561,7 +572,6 @@ class WordEditDialog:
     def __init__(self):
         '''Prepare dialog for editing individual words, for running later.'''
         global myGlobalBuilder
-        global myGlobalRenderer
         
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object("wordEditDialog")
@@ -584,8 +594,8 @@ class WordEditDialog:
                     wordExcluded (bool) - set if the word was marked as excluded
                     data (str) - multiline string of prefix \t item \t postfix
         '''
-        global myGlobalRenderer
         global myGlobalBuilder
+        global myGlobalRenderer
         global myGlobalWindow
         
         # make sure TreeView columns are using current font
@@ -704,6 +714,7 @@ class ConcordanceDialog:
         '''
         global myGlobalBuilder
         global myGlobalRenderer
+        global myGlobalWindow
         
         # make sure TreeView columns are using current font
         myGlobalBuilder.get_object('concordancePreCellRendererText').set_property('font-desc', myGlobalRenderer.vernFontDesc)
@@ -1330,11 +1341,9 @@ will be output in decomposed format.""")
         '''Run a dialog to collect sight words.
         
         Parameter: sightWordList (list of str) - current list of words (or empty list)
-        Return value: True if the sight word list changed, otherwise False
+        Return value: sight word list (could be empty list, or None if user clicked Cancel)
         '''
         global myGlobalWindow
-        # save a copy of the list to compare later
-        saveSightWords = sightWordList[:]
         # run the SightWordsDialog until it is valid
         valid = False
         myGlobalWindow.theSightWordsDialog.SetSightWords(sightWordList)
@@ -1558,6 +1567,8 @@ will be output in decomposed format.""")
     
     def ProcessAffixes(self):
         '''Words or affixes have changed. Make sure that all words in the word list have affixes marked appropriately.'''
+        global myGlobalRenderer
+        
         # create lists of prefixes and suffixes (by looking at position of '-' in affix list elements)
         prefixes = [a[:-1] for a in self.affixes if a.endswith('-')]
         suffixes = [a[1:] for a in self.affixes if a.startswith('-')]
@@ -1601,8 +1612,7 @@ will be output in decomposed format.""")
                     markup_word = suffMarkupMatch.sub(zwj+'</b><span foreground="gray">'+zwj+'\\1</span>', markup_word)
                 word_info[kWordMarkupForm] = markup_word
         
-        # make sure we recalculate the teaching order when we display it
-        self.dataChanged = True
+        # make sure we recalculate the teaching order when we display it (not dataChanged, correct?)
         self.teachingOrderChanged = True
 
 
@@ -2018,11 +2028,11 @@ Please try again.""")
         return phrases[:-1]
     
     def LevenshteinRatio(self, s, t):
-        """ Calculates levenshtein distance ratio of similarity between two strings.
+        ''' Calculates levenshtein distance ratio of similarity between two strings.
             For all i and j, distance[i,j] will contain the Levenshtein
             distance between the first i characters of s and the
             first j characters of t
-        """
+        '''
         # Initialize matrix of zeros
         rows = len(s)+1
         cols = len(t)+1
@@ -2113,8 +2123,8 @@ class GtkBuilder(Gtk.Builder):
         self.recursive_xml_translate(self.tree.getroot())
 
     def recursive_xml_translate(self, node):
-        """Custom translation with Glade/Builder does not work when locale is not installed.
-        Reset every label in Glade file using gettext."""
+        '''Custom translation with Glade/Builder does not work when locale is not installed.
+        Reset every label in Glade file using gettext.'''
         def func_not_found(value):
             logger.warning('could not translate: {}'.format(value))
         
@@ -2241,10 +2251,11 @@ class Handler:
         global myGlobalWindow
         global myGlobalRenderer
         if myGlobalRenderer.SelectFont():
-            myGlobalWindow.ApplyFonts()
+            myGlobalWindow.ApplyNewFont()
     
     def on_interfaceMenuItem_activate(self, widget, lang, idx):
         global myGlobalWindow
+        global myGlobalBuilder
         global myGlobalConfig
         global _
         settings = myGlobalWindow.window.get_settings()
@@ -2276,6 +2287,9 @@ class Handler:
     
     def on_helpMenuItem_activate(self, *args):
         '''Process the Help > PrimerPrep Help menu. Display help web page.'''
+        global myGlobalConfig
+        global myGlobalProgramPath
+        
         lang = myGlobalConfig['Option']['lang']
         filename = os.path.join(myGlobalProgramPath, 'Help', "PrimerPrepHelp-" + lang + ".htm")
         if not os.path.exists(filename):
@@ -2287,6 +2301,7 @@ class Handler:
     
     def on_feedbackMenuItem_activate(self, *args):
         '''Process the Help > Give Feedback menu. Go to Google form web page.'''
+        #global myGlobalConfig
         #lang = myGlobalConfig['Option']['lang']'   # May eventually want to go to a different page dependent on UI language?
         webbrowser.open("https://docs.google.com/forms/d/e/1FAIpQLSddxvDvbn0uohOt7J4Gcc48KgLxg1q4hOfjeYLRSUlKB4pQUw/viewform?usp=sf_link", new=2)
     
@@ -2304,6 +2319,7 @@ introducing the letters in a primer.""")
     
     def on_addTextsButton_clicked(self, *args):
         '''Using a FileChooserDialog, allow user to select and open file(s) for analysis.'''
+        global myGlobalWindow
         # run the open file dialog, and handle loading any file(s) chosen
         myGlobalWindow.AddTexts()
     
@@ -2317,6 +2333,7 @@ introducing the letters in a primer.""")
         
     def on_showFullPathCheckButton_toggled(self, *args):
         global myGlobalBuilder
+        global myGlobalWindow
         fileListStore = myGlobalBuilder.get_object('fileListStore')
         fileListStore.clear()
         for filename in myGlobalWindow.analysis.fileNames:
@@ -2329,6 +2346,7 @@ introducing the letters in a primer.""")
     def on_affixesRadioButton_toggled(self, *args):
         global myGlobalWindow
         global myGlobalConfig
+        global myGlobalBuilder
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
         myGlobalWindow.analysis.teachingOrderChanged = True
@@ -2353,6 +2371,7 @@ introducing the letters in a primer.""")
     def on_countWordRadioButton_toggled(self, *args):
         global myGlobalWindow
         global myGlobalConfig
+        global myGlobalBuilder
         # make sure we recalculate the teaching order next time we display it
         myGlobalWindow.analysis.dataChanged = True
         myGlobalWindow.analysis.teachingOrderChanged = True
@@ -2397,11 +2416,14 @@ introducing the letters in a primer.""")
         myGlobalWindow.analysis.ReprocessTextsForChars()
     
     def on_filterTextEntry_changed(self, widget):
+        global myGlobalBuilder
+        global myGlobalWindow
         wordListTreeModelFilter = myGlobalBuilder.get_object("wordListTreeModelFilter")
         wordListTreeModelFilter.refilter()
         myGlobalWindow.ShowSummaryStatusBar()
 
     def on_wordListTreeView_row_activated(self, widget, row, col):
+        global myGlobalWindow
         # just pass this job to the analysis object, will set dataChanged, if appropriate
         myGlobalWindow.analysis.RunWordEditDialog(widget, row)
     
@@ -2458,11 +2480,14 @@ introducing the letters in a primer.""")
                 logger.error("Tried to remove a sight word lesson that was not a sight word lesson")
     
     def on_teachingOrderTreeView_row_activated(self, widget, row, col):
-        # double-click on a row, just pass this job to the analysis object
-        # will display concordance for a letter, edit a sight word lesson
+        '''Double-click on a row, just pass this job to the analysis object.
+        It will display concordance for a letter, or edit a sight word lesson.
+        '''
+        global myGlobalWindow
         myGlobalWindow.analysis.TeachingOrderDoubleClick(widget, row)
     
     def on_teachingOrderTreeView_drag_begin(self, treeview, drag_context):
+        global myGlobalWindow
         treeselection = treeview.get_selection()
         model, iter = treeselection.get_selected()
         myGlobalWindow.letterDragged = model.get_value(iter, 0)
@@ -2475,6 +2500,7 @@ introducing the letters in a primer.""")
         Parameters: treeview (unused)
                     context (unused)
         '''
+        global myGlobalWindow
         myGlobalWindow.analysis.TeachingOrderModified(myGlobalWindow.teachingOrderListStore)
         myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
         myGlobalWindow.analysis.dataChanged = True
@@ -2494,6 +2520,7 @@ introducing the letters in a primer.""")
         
         Parameter: selection - new lesson selected
         '''
+        global myGlobalWindow
         (model, row) = selection.get_selected()
         if row is not None:
             letter = model[row][0]
@@ -2514,6 +2541,7 @@ introducing the letters in a primer.""")
         
         Parameter: selection - new lesson selected
         '''
+        global myGlobalWindow
         (model, row) = selection.get_selected()
         if row is not None:
             myGlobalWindow.SaveLessonText(myGlobalWindow.analysis.selectedGrapheme)
@@ -2640,16 +2668,15 @@ decomposed format, which may be different than your original source files.""")
         to really start from scratch, including all configuration information. The easiest
         way to do this is to just delete the WordAnalysis object instance and create a new one.
         '''
-        global myGlobalProjectPath
-        global myGlobalProjectName
         global myGlobalBuilder
+        global myGlobalProjectName
         
         if self.analysis.dataChanged:
             # confirm clearing data
             title = _("Confirm clear data")
             msg = _("There is unsaved data. Start a new project anyway?")
             if not SimpleYNQuestion(title, 'dialog-warning', msg):
-                # no, we shouldn't quit
+                # no, we shouldn't clear this data
                 return
         # either data hasn't changed since last save or user confirmed to continue anyway
         
@@ -2688,8 +2715,9 @@ decomposed format, which may be different than your original source files.""")
         (so this must follow an Open or Save As command to have a valid filename and path).
         All data structures are stored (using pickle), so they can be restored later.
         '''
-        global myGlobalProjectPath
         global myGlobalProjectName
+        global myGlobalProjectPath
+        global myGlobalWindow
         global myGlobalRenderer
         
         # make sure that the project name is valid
@@ -2728,9 +2756,10 @@ decomposed format, which may be different than your original source files.""")
         Using a FileChooserDialog, the user specifies the file name and location, and
         all data structures are stored (using pickle), so they can be restored later.
         '''
-        global myGlobalPath
         global myGlobalProjectPath
+        global myGlobalPath
         global myGlobalProjectName
+        global myGlobalBuilder
         
         msg = _("Save project as...")
         chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
@@ -2771,15 +2800,113 @@ decomposed format, which may be different than your original source files.""")
             break
         chooser.destroy()
     
-    def OpenProject(self):
-        '''Open a previously saved file and load the project data. Using a FileChooserDialog,
-        the user locates and selects the project file to be loaded. All data structures are
-        restored (using pickle).
-        '''
-        global myGlobalPath
-        global myGlobalProjectPath
-        global myGlobalProjectName
+    def LoadProject(self, filename):
         global myGlobalRenderer
+        global myGlobalProjectPath
+        global myGlobalPath
+        global myGlobalProjectName
+        global myGlobalBuilder
+        
+        logger.debug("Opening: {}".format(filename))
+        try:
+            with open(filename, 'rb') as f:
+                vernum = pickle.load(f)
+                if not isinstance(vernum, int) or vernum not in (1, 2, ):
+                    # this is not a project file that we know how to load
+                    raise UnknownProjectType
+                
+                del self.analysis
+                self.analysis = pickle.load(f)
+                
+                # initially there are no changes (so you can quit without confirmation)
+                # but note that teachingOrderChanged could be true, so rebuild might be necessary
+                self.analysis.dataChanged = False
+                
+                if vernum == 1:
+                    # new fields need to be added
+                    self.analysis.containsNFC = False
+                    self.analysis.containsNFD = False
+                    self.analysis.userInformedEncodingError = False
+                    # we need to make sure that all data is NFD
+                    fileLinesNFD = []
+                    for lines in self.analysis.fileLines:
+                        # process this list of text lines (from each file)
+                        # sets containsNFC and NFD and gives warning if inconsistent
+                        self.analysis.CheckEncoding(lines)
+                        # make sure this data (set of lines) is in NFD encoding
+                        linesNFD = [unicodedata.normalize('NFD', line) for line in lines]
+                        # add this normalized set of text lines to the files list
+                        fileLinesNFD.append(linesNFD)
+                    # save the normalized text lines as the new
+                    self.analysis.fileLines = fileLinesNFD
+                    self.analysis.dataChanged = True
+                else:
+                    if self.analysis.containsNFC and self.analysis.containsNFD:
+                        # warn the user that this data contains inconsistent encoding
+                        title = _("Encoding error")
+                        msg = _("""Warning: This is a reminder that your input data has inconsistent encoding,
+with some characters composed and some decomposed. Ask a consultant to help you
+make your data more consistent. Any outputs from PrimerPrep (word list, teaching order)
+will be output in decomposed format.""")
+                        SimpleMessage(title, 'dialog-warning', msg)
+                
+                # load and unpack the options tuple, and set the options
+                options = pickle.load(f)
+                # set the new font, and make sure it gets applied through the window
+                myGlobalRenderer.SetFont(options[0])
+                self.ApplyNewFont()
+                # set other options
+                self.affixesExcluded.set_active(options[1])
+                self.countEachWord.set_active(options[2])
+            
+            # save the path and filename (and update myGlobalPath)
+            myGlobalProjectPath = os.path.dirname(filename)
+            myGlobalPath = myGlobalProjectPath
+            myGlobalProjectName = os.path.basename(filename)
+            self.window.set_title(myGlobalProjectName + " — PrimerPrep")
+            
+            # from the loaded analysis data, set the checkbox for separate diacritics
+            sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
+            sepDiacr.set_active(self.analysis.separateCombDiacritics)
+            
+            # from the loaded analysis data, update all of the ListStores
+            self.analysis.UpdateFileList(self.fileListStore,
+                                         myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
+            self.analysis.UpdateWordList(self.wordListStore)
+            self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
+            self.UpdateAffixList()
+            self.ShowSummaryStatusBar()
+            
+            # allow the project to be saved
+            menu = myGlobalBuilder.get_object("saveProjectMenuItem")
+            menu.set_sensitive(True)
+            # allow the teaching order to be saved if project has one
+            menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
+            if hasattr(self.analysis, 'teachingOrder'):
+                menu.set_sensitive(True)
+            else:
+                menu.set_sensitive(False)
+            
+            # because teaching order rebuild may be necessary, it's good to start on first notebook tab
+            self.mainNB.set_current_page(0)
+        except (OSError, EOFError, pickle.UnpicklingError) as e:
+            # general error reading the file
+            title = _("Error")
+            msg = _("Error reading project: ") + str(e)
+            SimpleMessage(title, "dialog-error", msg)
+        except UnknownProjectType:
+            # unknown type of project file
+            title = _("Error")
+            msg = _("This file does not contain valid project data.")
+            SimpleMessage(title, "dialog-error", msg)
+    
+    def OpenProject(self):
+        '''Allow the user to open a previously saved file and load the project data. Using a
+        FileChooserDialog, the user locates and selects the project file to be loaded.
+        All data structures are restored (using pickle).
+        '''
+        global myGlobalProjectPath
+        global myGlobalPath
         
         if self.analysis.dataChanged:
             # confirm clearing data
@@ -2812,96 +2939,7 @@ decomposed format, which may be different than your original source files.""")
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             if filename:
-                logger.debug("Opening: {}".format(filename))
-                try:
-                    with open(filename, 'rb') as f:
-                        vernum = pickle.load(f)
-                        if not isinstance(vernum, int) or vernum not in (1, 2, ):
-                            # this is not a project file that we know how to load
-                            raise UnknownProjectType
-                        
-                        del self.analysis
-                        self.analysis = pickle.load(f)
-                        
-                        # initially there are no changes (so you can quit without confirmation)
-                        # but note that teachingOrderChanged could be true, so rebuild might be necessary
-                        self.analysis.dataChanged = False
-                        
-                        if vernum == 1:
-                            # new fields need to be added
-                            self.analysis.containsNFC = False
-                            self.analysis.containsNFD = False
-                            self.analysis.userInformedEncodingError = False
-                            # we need to make sure that all data is NFD
-                            fileLinesNFD = []
-                            for lines in self.analysis.fileLines:
-                                # process this list of text lines (from each file)
-                                # sets containsNFC and NFD and gives warning if inconsistent
-                                self.analysis.CheckEncoding(lines)
-                                # make sure this data (set of lines) is in NFD encoding
-                                linesNFD = [unicodedata.normalize('NFD', line) for line in lines]
-                                # add this normalized set of text lines to the files list
-                                fileLinesNFD.append(linesNFD)
-                            # save the normalized text lines as the new
-                            self.analysis.fileLines = fileLinesNFD
-                            self.analysis.dataChanged = True
-                        else:
-                            if self.analysis.containsNFC and self.analysis.containsNFD:
-                                # warn the user that this data contains inconsistent encoding
-                                title = _("Encoding error")
-                                msg = _("""Warning: This is a reminder that your input data has inconsistent encoding,
-with some characters composed and some decomposed. Ask a consultant to help you
-make your data more consistent. Any outputs from PrimerPrep (word list, teaching order)
-will be output in decomposed format.""")
-                                SimpleMessage(title, 'dialog-warning', msg)
-                        
-                        # load and unpack the options tuple, and set the options
-                        options = pickle.load(f)
-                        myGlobalRenderer.fontName = options[0]
-                        self.affixesExcluded.set_active(options[1])
-                        self.countEachWord.set_active(options[2])
-                    
-                    # save the path and filename (and update myGlobalPath)
-                    myGlobalProjectPath = os.path.dirname(filename)
-                    myGlobalPath = myGlobalProjectPath
-                    myGlobalProjectName = os.path.basename(filename)
-                    self.window.set_title(myGlobalProjectName + " — PrimerPrep")
-                    
-                    # from the loaded analysis data, set the checkbox for separate diacritics
-                    sepDiacr = myGlobalBuilder.get_object("separateDiacriticsCheckButton")
-                    sepDiacr.set_active(self.analysis.separateCombDiacritics)
-                    
-                    # from the loaded analysis data, update all of the ListStores
-                    self.analysis.UpdateFileList(self.fileListStore,
-                                                 myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
-                    self.analysis.UpdateWordList(self.wordListStore)
-                    self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
-                    self.UpdateAffixList()
-                    self.ShowSummaryStatusBar()
-                    
-                    # allow the project to be saved
-                    menu = myGlobalBuilder.get_object("saveProjectMenuItem")
-                    menu.set_sensitive(True)
-                    # allow the teaching order to be saved if project has one
-                    menu = myGlobalBuilder.get_object("saveTeachingOrderMenuItem")
-                    if hasattr(self.analysis, 'teachingOrder'):
-                        menu.set_sensitive(True)
-                    else:
-                        menu.set_sensitive(False)
-                    
-                    # because teaching order rebuild may be necessary, it's good to start on first notebook tab
-                    self.mainNB.set_current_page(0)
-                except (OSError, EOFError, pickle.UnpicklingError) as e:
-                    # general error reading the file
-                    title = _("Error")
-                    msg = _("Error reading project: ") + str(e)
-                    SimpleMessage(title, "dialog-error", msg)
-                except UnknownProjectType:
-                    # unknown type of project file
-                    title = _("Error")
-                    msg = _("This file does not contain valid project data.")
-                    SimpleMessage(title, "dialog-error", msg)
-                    
+                self.LoadProject(filename)
         chooser.destroy()
     
     def AddTexts(self):
@@ -2913,6 +2951,8 @@ will be output in decomposed format.""")
         Parameters: widget (unused)
                     data (unused)
         '''
+        global myGlobalBuilder
+        
         msg = _("Choose text(s) to open...")
         chooser = Gtk.FileChooserDialog(title=msg, parent=self.window,
                                         action=Gtk.FileChooserAction.OPEN)
@@ -3165,7 +3205,7 @@ will be output in decomposed format.""")
             self.affixList.get_style_context().remove_class("vernacular")
         self.affixList.set_markup(affixes)
     
-    def ApplyFonts(self):
+    def ApplyNewFont(self):
         # apply a new vernacular font, primarily updating the CellRendererText properties
         global myGlobalRenderer
         
@@ -3254,6 +3294,8 @@ will be output in decomposed format.""")
         '''Put the number of texts and number of unique words
         (and number filtered, if applicable) in the statusbar.
         '''
+        global myGlobalBuilder
+        
         totalWords = self.analysis.GetNumWords()
         numFiltered = len(self.wordListTreeModelFilter)
         text = _("Texts") + ": " + str(self.analysis.GetNumFiles())
@@ -3265,6 +3307,8 @@ will be output in decomposed format.""")
         statusbar.push(0, text)
     
     def letter_cell_data_func(self, column, cell, model, iter, data):
+        global myGlobalRenderer
+        
         content = model.get_value(iter, 0)
     
         if content == '\u2686\u2686':
@@ -3279,7 +3323,6 @@ will be output in decomposed format.""")
         all of the analysis data.
         '''
         global myGlobalBuilder
-        global myGlobalRenderer
         global myGlobalHandler
         
         # create an instance of WordAnalysis to store our data
@@ -3332,7 +3375,7 @@ will be output in decomposed format.""")
         self.filterTextEntry.get_style_context().add_class("vernacular")
         self.lessonTextsTextView.get_style_context().add_class("vernacular")
         # set the vernacular font
-        self.ApplyFonts()
+        self.ApplyNewFont()
         
         self.window.set_default_direction(Gtk.TextDirection.LTR)
         self.isRTL = False
@@ -3387,24 +3430,27 @@ def SaveConfig():
 # If the program is run directly or passed as an argument to the python
 # interpreter then create a PrimerPrepWindow class instance and run it
 if __name__ == "__main__":
-    # initialize our global variables
-    myGlobalProgramPath = os.path.dirname(os.path.realpath(__file__))
-    myGlobalPath = os.path.expanduser("~")
-    if platform.system() == "Windows":
-        #  for Windows, add Documents to the default path
-        myGlobalPath = os.path.join(myGlobalPath, 'Documents')
-    
-    # display a splash screen, especially since the opening of the initial window can take some time
+    # prep to display a splash screen, especially since the opening of the initial window can take some time
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        myGlobalProgramPath = sys._MEIPASS
         # running in a PyInstaller bundle
-        cmds = [os.path.join(sys._MEIPASS, 'PrimerPrepSplash')]
+        cmds = [os.path.join(myGlobalProgramPath, 'PrimerPrepSplash')]
     else:
+        myGlobalProgramPath = os.path.dirname(os.path.abspath(__file__))
         cmds = [sys.executable, os.path.join(myGlobalProgramPath, "PrimerPrepSplash.py")]
+    # set the current working directory to the app directory
+    os.chdir(myGlobalProgramPath)
     #print('Splash:', cmds)
     try:
         splashScreen = subprocess.Popen(cmds)
     except:
         splashScreen = None
+    
+    # initialize our global variables
+    myGlobalPath = os.path.expanduser("~")
+    if platform.system() == "Windows":
+        #  for Windows, add Documents to the default path
+        myGlobalPath = os.path.join(myGlobalPath, 'Documents')
     
     # make sure we have our default English translation set up
     locale_path = os.path.join(myGlobalProgramPath, 'translations')
@@ -3422,6 +3468,18 @@ if __name__ == "__main__":
     myGlobalBuilder = GtkBuilder("PrimerPrep.glade", APP_NAME)
     myGlobalHandler = Handler()
     myGlobalBuilder.connect_signals(myGlobalHandler)
+    
+    # check for an argument (project to open)
+    filename = None
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+        if not filename.endswith(".ppdata"):
+            if splashScreen:
+                splashScreen.terminate()
+            msg = _("""The input file provided to PrimerPrep is not a valid project file.
+It should have a .ppdata extension.""") + " ( " + filename + " )"
+            SimpleMessage(_("Invalid input file"), "dialog-error", msg)
+            sys.exit(1)
     
     # initialize the renderer (and also set up CSS style providers) before the window, since window code needs it
     myGlobalRenderer = VernacularRenderer()
@@ -3493,4 +3551,9 @@ if __name__ == "__main__":
     # we are done stalling for time
     if splashScreen:
         splashScreen.terminate()
+    
+    # if a filename was passed (e.g. by double-clicking a .ppdata project data file), load it
+    if filename:
+        myGlobalWindow.LoadProject(filename)
+    
     Gtk.main()
