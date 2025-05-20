@@ -18,6 +18,8 @@
 # © 2025 SIL Global
 #
 # Modifications:
+# 3.395 JCH May 2025
+#    Fix problems in RegEx's when FreezeArabicForms has been used to prepare the data
 # 3.39 JCH May 2025
 #    Solidify application of new fonts, make sure on opening a project that fonts are applied completely
 #    Make association of .ppdata project files with the app (w/ custom icon), to open by double-clicking
@@ -145,7 +147,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.39"
+progVersion = "3.395"
 progYear = "2025"
 dataModelVersion = 2
 DEBUG = False
@@ -988,17 +990,17 @@ will be output in decomposed format.""")
         
         Parameter: lines (list of str) - lines of text to be analyzed
         '''
-        # build a RegExp that can split out individual characters
-        # built outside loop because it is the same for every line
+        # build a RegEx that splits out individual characters
+        # (built outside loop because it is the same for every line)
         # make sure to attach any zero width joiners (ZWJs U+200d)
-        # but remove Word Joiners (WJs U+2060) - they are there to ensure
-        # that the ZWJs get attached to the right character
+        # but remove/ignore Word Joiners (WJs U+2060) - they are only there
+        # to ensure that the ZWJs get attached to the right character
         if self.separateCombDiacritics:
-            # RegExp that treats combining diacritics separately
-            findChars = re.compile(r'(\u200d?.(?<!\u2060)\u200d?)')
+            # RegEx that treats combining diacritics separately
+            findChars = re.compile(r'(\u200d?[^\u2060]\u200d?)')
         else:
-            # RegExp that includes combining diacritics with their preceding base characters
-            findChars = re.compile(r'(\u200d?.(?:[\u0300-\u036f]+)?(?<!\u2060)\u200d?)')
+            # RegEx that includes combining diacritics with their preceding base characters
+            findChars = re.compile(r'(\u200d?[^\u2060][\u0300-\u036f]*\u200d?)')
         
         # make sure we have identified all characters in the file
         for line in lines:
@@ -1010,7 +1012,7 @@ will be output in decomposed format.""")
                     #  get base character
                     ch = char[0]
                     if ch == '\u200d':
-                        # skip over ZWJ, if present
+                        # skip over initial ZWJ, if present
                         ch = char[1]
                     if unicodedata.category(ch)[0] not in 'LM':
                         # base is not a letter or a mark
@@ -1038,7 +1040,7 @@ will be output in decomposed format.""")
         
         Parameter: lines (list of str) - lines of text to be analyzed
         '''
-        # build 'breaks' string with all word breaking characters for RegExp splitting
+        # build 'breaks' string with all word breaking characters for RegEx splitting
         breaks = ''
         for char in self.wordBreakChars:
             # need to put '\' before special characters
@@ -1168,23 +1170,25 @@ will be output in decomposed format.""")
             # no words to process
             return
         
-        # convert the digraphs list into a RegExp OR group
+        # convert the digraphs list into a RegEx OR group
         digraphList = self.digraphs
         # make sure that the longer multigraphs come first, or they might not get matched
         digraphList.sort(key=len, reverse=True)
-        digraphStr = '|'.join(digraphList)
+        # build the RegEx string (escape any special characters - which would be weird, but for safety)
+        digraphStr = '|'.join(re.escape(dg) for dg in digraphList)
         if len(digraphStr) > 0:
             digraphStr += '|'
         
-        # build a RegExp that can split out individual graphemes including digraphs (from list)
-        # built outside loop because it is the same for every word
-        # make sure to include any zero width joiners (ZWJs)
+        # build a RegEx that can split out individual graphemes including digraphs (from list)
+        # (built outside loop because it is the same for every word)
+        # make sure to include any zero width joiners (ZWJs, \u200d), but exclude word joiners 
+        # (WJs, \u2060) and any zero width spaces (ZWSPs, \u200b) which are used to mark affixes
         if self.separateCombDiacritics:
-            # RegExp that treats combining diacritics separately
-            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'.)(?<!\u200b)\u200d?)')
+            # RegEx that treats combining diacritics separately
+            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'[^\u200b\u2060])\u200d?)')
         else:
-            # RegExp that includes combining diacritics with their preceding base characters
-            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'.(?:[\u0300-\u036f]+)?)(?<!\u200b)\u200d?)')
+            # RegEx that includes combining diacritics with their preceding base characters
+            findGraphemes = re.compile(r'(\u200d?(?:' + digraphStr + r'[^\u200b\u2060])[\u0300-\u036f]*\u200d?)')
         
         kWordCnt = 0
         kWordManual = 1
@@ -1915,7 +1919,7 @@ Please try again.""")
         Parameter: word (str) - the word to find in the text
         Return value: (str) - "concordance" of word in context
         '''
-        # build 'breaks' string with all word breaking characters for RegExp matching
+        # build 'breaks' string with all word breaking characters for RegEx matching
         breaks = ' '
         for char in self.wordBreakChars:
             # need to put '\' before special characters
@@ -1971,7 +1975,7 @@ Please try again.""")
         Return value: (str) - "concordance" of phrases possible with these letters
         '''
         # build 'breaks' string with a list of all of the word-breaking
-        # characters for RegExp matching
+        # characters for RegEx matching
         breaks = ''
         for char in self.wordBreakChars:
             # need to put '\' before special characters
