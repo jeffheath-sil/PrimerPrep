@@ -2394,6 +2394,7 @@ introducing the letters in a primer.""")
             myGlobalWindow.UpdateAffixList()
             myGlobalWindow.analysis.ProcessAffixes()
             myGlobalWindow.analysis.UpdateWordList(myGlobalWindow.wordListStore)
+            myGlobalWindow.analysis.dataChanged = True
     
     def on_countWordRadioButton_toggled(self, *args):
         global myGlobalWindow
@@ -2418,6 +2419,7 @@ introducing the letters in a primer.""")
             myGlobalWindow.analysis.ReprocessTextsForWords()
             # display the updated results
             myGlobalWindow.analysis.UpdateWordList(myGlobalWindow.wordListStore)
+            myGlobalWindow.analysis.dataChanged = True
             myGlobalWindow.ShowSummaryStatusBar()
     
     def on_digraphsButton_clicked(self, button):
@@ -3030,6 +3032,7 @@ will be output in decomposed format.""")
                     else:
                         name = filename.split('\\')[-1]
                     myGlobalBuilder.get_object('fileListStore').append([name])
+                    self.analysis.dataChanged = True
             if fileLoaded:
                 # at least one loaded, update data on screen
                 self.analysis.UpdateWordList(self.wordListStore)
