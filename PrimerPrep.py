@@ -18,6 +18,11 @@
 # © 2025 SIL Global
 #
 # Modifications:
+# 3.40 JCH Jun 2025
+#    Mark character being taught in the list of example words in the teaching order
+#    Add filter in LessonTexts, mark in bold all text that matches the filter (set to lesson letter by default)
+#    In LessonTexts, mark in light yellow all words that are new (don't appear in previous lessons)
+#    In glade UI, add footer under LessonText with description of markup
 # 3.395 JCH May 2025
 #    Fix problems in RegEx's when FreezeArabicForms has been used to prepare the data
 # 3.39 JCH May 2025
@@ -147,7 +152,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.395"
+progVersion = "3.40"
 progYear = "2025"
 dataModelVersion = 2
 DEBUG = False
@@ -308,12 +313,6 @@ class VernacularRenderer:
         else:
             fntName = "Ubuntu 14"
         #fntName = "Gentium 14"
-        ## modifiable vernacular class CSS formatting
-        #VernacularCSS = """
-#.vernacular {
-  #font-family: 'Charis SIL Semi-Condensed', 'Charis SIL', Ubuntu, Gentium, serif;
-  #font-size: 14pt;
-#}"""
         
         # set up the global (static) CSS provider
         self.global_style_provider = Gtk.CssProvider()
@@ -1118,7 +1117,7 @@ will be output in decomposed format.""")
         kWordMarkupForm = 4
         # add each of the words and its count
         for word, word_info in self.words.items():
-            # put zero-width space in front, or markup doesn't appear
+            # put zero-width space in front, or markup may not appear
             markup_word = '\u200B' + word_info[kWordMarkupForm]
             listStore.append([markup_word, word_info[kWordCnt], word])
         # start with descending count order
@@ -1462,6 +1461,8 @@ will be output in decomposed format.""")
                 # load list of words
                 swIdx = letter
                 words = self.sightWords[swIdx-1]
+                # create a string from the list of words, separated by double spaces
+                wordList = '  '.join(words)
             else:
                 dispLetter = letter
                 # if the first character is a combining diacritic
@@ -1473,8 +1474,29 @@ will be output in decomposed format.""")
                 words = self.graphemeExampleWords[letter]
                 # set sight word index as zero, so we can quickly know that this is not a sight word lesson
                 swIdx = 0
-            # make a list of words as a string
-            wordList = '  '.join(words)
+                # make a list of words with the target letter highlighted in bold
+                highlightedWords = []
+                for word in words:
+                    graphemes = self.wordsAsGraphemes[word]
+                    highlightedGraphemes = [f"<b>{g}</b>" if g == letter else g for g in graphemes]
+                    highlightedWords.append(''.join(highlightedGraphemes))
+                # create a string from the list of words, separated by double spaces
+                # put zero-width space in front, or markup may not appear
+                wordList = '\u200B' + '  '.join(highlightedWords)
+                
+                # this is some dubugging code... using my main Chadian Arabic stories test data
+                # the line for "k" is taller than it should be, but if we drag and drop to
+                # another position in the list (with a change in cell text), then it usually
+                # goes back to its proper height
+                #if letter in ["k"]:
+                    #logger.warning('{} example words: {}'.format(letter, wordList))
+                    #wordList = "Testing: " + wordList
+                    #wordList = wordList[100:300]
+                #if letter in ["k", "u"]:
+                    #logger.warning('{} example words: {}'.format(letter, wordList))
+                    #wordList = wordList.replace("<b>", "")
+                    #wordList = wordList.replace("</b>", "")
+            
             ## this string could be real long, so truncate it
             ## earlier ListView had rendering problem, diacritics shift left!
             #if len(wordList) > 120:
@@ -1888,6 +1910,7 @@ than the original word '{}'. Are you sure it is correct?""").format(' '.join(mor
                                 markup_word = re.sub('(</span>|</b>)(<span foreground="gray">|<b>)', '\u200d\\1\\2\u200d', markup_word)
                             
                             word_info[kWordMarkupForm] = markup_word
+                            # put zero-width space in front, or markup may not appear
                             markup_word = '\u200B' + markup_word
                             # can't use model[row][0] = markup_word, because TreeModelSort has no attribute set_value
                             # so we have to go indirectly through the child filterModel, using a converted iter
@@ -2560,14 +2583,27 @@ introducing the letters in a primer.""")
                 i = path.get_indices()[0]
                 letter = myGlobalWindow.analysis.teachingOrder[i]
             myGlobalWindow.analysis.selectedGrapheme = letter
+            if isinstance(letter, int):
+                # no filter text for sight words
+                myGlobalWindow.lessonTextsFilterTextEntry.set_text("")
+            else:
+                # make the filter text to be the selected letter
+                myGlobalWindow.lessonTextsFilterTextEntry.set_text(letter)
             
             # select equivalent row in teaching order
             myGlobalWindow.teachingOrderTreeView.get_selection().select_path(path)
             myGlobalWindow.teachingOrderTreeView.set_cursor(model.get_path(row))
             
             # update the text field on the Lesson Text tab
+            buffer = myGlobalWindow.lessonTextsTextBuffer
             txt = myGlobalWindow.analysis.lessonTexts.get(myGlobalWindow.analysis.selectedGrapheme, "")
-            myGlobalWindow.lessonTextsTextBuffer.set_text(txt)
+            # update the buffer, but don't initiate a changed event
+            # (because data hasn't actually changed; we just are displaying a different lesson)
+            buffer.handler_block_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+            buffer.set_text(txt)
+            buffer.handler_unblock_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+            # but still need to mark the text appropriately
+            myGlobalWindow.MarkUntaught(buffer)
         
         # try to grab the focus in the TextView (but this doesn't seem to work...)
         myGlobalWindow.lessonTextsTextView.grab_focus()
@@ -2578,6 +2614,10 @@ introducing the letters in a primer.""")
         global myGlobalWindow
         myGlobalWindow.MarkUntaught(buffer)
         myGlobalWindow.analysis.dataChanged = True
+    
+    def on_lessonTextsFilterTextEntry_changed(self, widget):
+        global myGlobalWindow
+        myGlobalWindow.MarkUntaught(myGlobalWindow.lessonTextsTextBuffer)
     
     def on_notebook_switch_page(self, notebook, tab, index):
         '''User has moved to a different tab (page) in the notebook interface.
@@ -2591,8 +2631,7 @@ introducing the letters in a primer.""")
             # there has actually been a change in page, so process it
             if index == 2:
                 # transitioning to the Lesson Texts tab, make sure that the text tagging is up-to-date
-                textBuffer = myGlobalWindow.lessonTextsTextBuffer
-                textBuffer.emit("changed")
+                myGlobalWindow.MarkUntaught(myGlobalWindow.lessonTextsTextBuffer)
             if myGlobalNotebookPage == 0 and index >= 1:
                 # moving from word discovery to a page where we need to display the teaching order
                 if myGlobalWindow.analysis.teachingOrderChanged:
@@ -3050,6 +3089,7 @@ will be output in decomposed format.""")
                         sightWords.add(sw.lower())
             else:
                 graphemesTaughtList.append(letter)
+        
         # create a list of the graphemes NOT taught
         graphemesUntaughtList = []
         for i in range(idx+1, len(self.analysis.teachingOrder)):
@@ -3080,22 +3120,52 @@ will be output in decomposed format.""")
         # add line breaks as well, since they don't seem to be in the wordBreakChars list
         wordBreaks += '\n\r'
         
-        # create a regex for finding the next word chunk
-        findWordChunk = re.compile(r'(.*?)([' + wordBreaks + ']+|$)')
+        # a regex for finding words
+        findWord = re.compile('[^' + wordBreaks + ']+')
+        # create a set of words already taught in previous lessons
+        wordsPrevUsed = set()
+        for i in range(idx):
+            letter = self.analysis.teachingOrder[i]
+            txt = self.analysis.lessonTexts.get(letter, "")
+            wordsPrevUsed.update(word.lower() for word in findWord.findall(txt))
         
-        # start in "taught" section
-        inTaughtSection = True
+        # remove existing "filter" and "newWord" tags
+        start_iter = buffer.get_start_iter()
+        end_iter = buffer.get_end_iter()
+        buffer.remove_tag_by_name("filter", start_iter, end_iter)
+        buffer.remove_tag_by_name("newWord", start_iter, end_iter)
         
         # get the buffer text to process
-        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False).lower()
+        text = buffer.get_text(start_iter, end_iter, False).lower()
         # the text should already be NFD, but this is a final safety check
         textNFD = unicodedata.normalize('NFD', text)
         if (text != textNFD):
             raise RuntimeError("Found unexpected NFC text")
         
+        # tag all text that matches the user-entered filter string
+        filter_text = self.lessonTextsFilterTextEntry.get_text().lower().strip()
+        if filter_text:
+            # there IS text to highlight, so find and tag all matches with "filter"
+            search_pos = 0
+            while True:
+                index = text.find(filter_text, search_pos)
+                if index == -1:
+                    break       # no more
+                # convert offset (int) to Gtk.TextIter range
+                match_start = buffer.get_iter_at_offset(index)
+                match_end = buffer.get_iter_at_offset(index + len(filter_text))
+                buffer.apply_tag(self.filterTag, match_start, match_end)
+                # start after that match
+                search_pos = index + len(filter_text)
+        
         # initialize loop variables
         pos = 0
         secStart = 0
+        # start in "taught" section
+        inTaughtSection = True
+        
+        # create a regex for finding the next word chunk
+        findWordChunk = re.compile(r'(.*?)([' + wordBreaks + ']+|$)')
         
         # loop over entire text
         # - find the next word, up to the next wordbreak character(s), and see if it's a sightword
@@ -3111,6 +3181,10 @@ will be output in decomposed format.""")
             wordLength = len(nextWord)
             wordBreaksLength = len(m.group(2))
             endWordPos = pos + wordLength
+            if nextWord not in wordsPrevUsed:
+                match_start = buffer.get_iter_at_offset(pos)
+                match_end = buffer.get_iter_at_offset(endWordPos)
+                buffer.apply_tag(self.newWordTag, match_start, match_end)
             if nextWord in sightWords:
                 logger.debug("taught sightword ({}-{})".format(pos, endWordPos))
                 # we were already in (taught) wordbreak characters, so just continue
@@ -3351,6 +3425,7 @@ will be output in decomposed format.""")
         self.teachingOrderLetterColumn = myGlobalBuilder.get_object("teachingOrderLetterColumn")
         self.teachingOrderLetterCellRenderer = myGlobalBuilder.get_object("teachingOrderLetterCellRenderer")
         self.teachingOrderFreqCellRenderer = myGlobalBuilder.get_object("teachingOrderFreqCellRenderer")
+        self.teachingOrderExamplesColumn = myGlobalBuilder.get_object("teachingOrderExamplesColumn")
         self.teachingOrderExamplesCellRenderer = myGlobalBuilder.get_object("teachingOrderExamplesCellRenderer")
         self.removeSightWordsButton = myGlobalBuilder.get_object("removeSightWordsButton")
         self.lessonTextsTreeView = myGlobalBuilder.get_object("lessonTextsTreeView")
@@ -3359,6 +3434,11 @@ will be output in decomposed format.""")
         self.lessonTextsLetterColumn = myGlobalBuilder.get_object("lessonTextsLetterColumn")
         self.lessonTextsLetterCellRenderer = myGlobalBuilder.get_object("lessonTextsLetterCellRenderer")
         self.lessonTextsFreqCellRenderer = myGlobalBuilder.get_object("lessonTextsFreqCellRenderer")
+        self.lessonTextsFilterTextEntry = myGlobalBuilder.get_object("lessonTextsFilterTextEntry")
+        
+        # allow markup in the examples column (in teaching order) - clear "text" attribute first
+        self.teachingOrderExamplesColumn.clear_attributes(self.teachingOrderExamplesCellRenderer)
+        self.teachingOrderExamplesColumn.add_attribute(self.teachingOrderExamplesCellRenderer, "markup", 2)
         
         # prepare the analysis dialogs for future use
         self.theAffixesDialog = AffixesDialog()
@@ -3378,6 +3458,7 @@ will be output in decomposed format.""")
         # add a vernacular class to vernacular fields (the TreeViews are handled manually in ApplyFonts)
         self.filterTextEntry.get_style_context().add_class("vernacular")
         self.lessonTextsTextView.get_style_context().add_class("vernacular")
+        self.lessonTextsFilterTextEntry.get_style_context().add_class("vernacular")
         # set the vernacular font
         self.ApplyNewFont()
         
@@ -3419,6 +3500,8 @@ will be output in decomposed format.""")
         # set up a tag for untaught residue
         textBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
         self.untaughtTag = textBuffer.create_tag("untaught", foreground="red")
+        self.filterTag = textBuffer.create_tag("filter", weight=Pango.Weight.BOLD)
+        self.newWordTag = textBuffer.create_tag("newWord", background="lightyellow")
         
         self.ShowSummaryStatusBar()
 
