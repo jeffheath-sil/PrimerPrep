@@ -241,10 +241,20 @@
                       </object>
                     </child>
                     <child>
+                      <object class="GtkMenuItem" id="AIAssistantMenuItem">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">Ask AI Assistant...</property>
+                        <property name="use-underline">True</property>
+                        <signal name="activate" handler="on_AIAssistantMenuItem_activate" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkMenuItem" id="feedbackMenuItem">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                         <property name="label" translatable="yes">Give Feedback...</property>
+                        <property name="use-underline">True</property>
                         <signal name="activate" handler="on_feedbackMenuItem_activate" swapped="no"/>
                       </object>
                     </child>

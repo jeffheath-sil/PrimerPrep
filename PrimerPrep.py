@@ -18,6 +18,8 @@
 # © 2025 SIL Global
 #
 # Modifications:
+# 3.41 JCH Oct 2025
+#    Add link to AI agent (Ask AI Assistant) in Help menu
 # 3.40 JCH Jun 2025
 #    Mark character being taught in the list of example words in the teaching order
 #    Add filter in LessonTexts, mark in bold all text that matches the filter (set to lesson letter by default)
@@ -152,7 +154,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "3.40"
+progVersion = "3.41"
 progYear = "2025"
 dataModelVersion = 2
 DEBUG = False
@@ -2331,6 +2333,12 @@ class Handler:
         #global myGlobalConfig
         #lang = myGlobalConfig['Option']['lang']'   # May eventually want to go to a different page dependent on UI language?
         webbrowser.open("https://docs.google.com/forms/d/e/1FAIpQLSddxvDvbn0uohOt7J4Gcc48KgLxg1q4hOfjeYLRSUlKB4pQUw/viewform?usp=sf_link", new=2)
+    
+    def on_AIAssistantMenuItem_activate(self, *args):
+        '''Process the Help > Ask AI Assistant menu. Go to AI agent web page.'''
+        #global myGlobalConfig
+        #lang = myGlobalConfig['Option']['lang']'   # May eventually want to go to a different page dependent on UI language?
+        webbrowser.open("https://software.sil.org/primerprep/help/agent/", new=2)
     
     def on_aboutMenuItem_activate(self, *args):
         '''Process the Help > About menu. Display information about the program.'''
