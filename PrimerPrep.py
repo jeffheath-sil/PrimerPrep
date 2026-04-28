@@ -268,16 +268,10 @@ def SimpleYNQuestion(title, msgType, msg):
 # Users can extend this in future by adding a UI for vowel definition.
 DEFAULT_VOWELS = set(
     'aeiou'
-    'àáâãäå'
-    'èéêë'
-    'ìíîï'
-    'òóôõö'
-    'ùúûü'
-    'ýÿ'
-    'āēīōū'
-    'ăĕĭŏŭ'
-    'ạẹịọụ'
-    'əɛɔɨʊ'   # common African language vowels
+    'əɛɔɨʊɩǝ'    # some African language vowels
+    'ɑæøœʌ'      # additional IPA / orthographic vowels
+    'аеёиоуыэюя' # Cyrillic vowels (Russian)
+    'іїє'        # Ukrainian-specific vowels
     # Arabic short vowels (harakat diacritics)
     '\u064e'   # fatha (a)
     '\u064f'   # damma (u)
@@ -287,8 +281,8 @@ DEFAULT_VOWELS = set(
     '\u064d'   # kasratan
 )
 
-def process_syllables(graphemes, letter, vowels=None, vowels_together=False,
-                      consonants_together=False, syllable_filters=None):
+def process_syllables(graphemes, letter, vowels=None, vowel_graphemes=None,
+                      vowels_together=False, consonants_together=False, syllable_filters=None):
     '''Syllabify a grapheme list, inserting "." at syllable boundaries, and
     determine whether the target letter matches the active syllable position filters.
     
@@ -312,8 +306,10 @@ def process_syllables(graphemes, letter, vowels=None, vowels_together=False,
     if vowels is None:
         vowels = DEFAULT_VOWELS
 
-    # A grapheme is treated as a vowel if any of its characters is in the vowels set.
-    is_vowel = [any(ch in vowels for ch in g) for g in graphemes]
+    if vowel_graphemes is not None:
+        is_vowel = [g in vowel_graphemes for g in graphemes]
+    else:
+        is_vowel = [any(ch in vowels for ch in g) for g in graphemes]
     n = len(is_vowel)
 
     # determine syllable break positions
@@ -638,6 +634,76 @@ class WordBreaksDialog:
         return chars
         
 
+class DefineVowelsDialog:
+    '''A class used to present a dialog for classifying graphemes as vowels or consonants.
+
+    Attributes:
+      dialog (Dialog object) - dialog for defining vowels
+      vowelStore (ListStore) - data store for vowel graphemes
+      consonantStore (ListStore) - data store for consonant graphemes
+    '''
+
+    def __init__(self):
+        '''Prepare dialog for defining vowels, for running later.'''
+        global myGlobalBuilder
+
+        self.dialog = myGlobalBuilder.get_object('defineVowelsDialog')
+        self.vowelStore = myGlobalBuilder.get_object('vowelListStore')
+        self.vowelTreeView = myGlobalBuilder.get_object('vowelTreeView')
+        self.vowelStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        self.vowelTreeView.connect("row-activated", self.on_Vowel_doubleClick)
+
+        self.consonantStore = myGlobalBuilder.get_object('consonantListStore')
+        self.consonantTreeView = myGlobalBuilder.get_object('consonantTreeView')
+        self.consonantStore.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        self.consonantTreeView.connect("row-activated", self.on_Consonant_doubleClick)
+
+    def Run(self, all_graphemes, vowel_graphemes):
+        global myGlobalBuilder
+        global myGlobalRenderer
+
+        myGlobalBuilder.get_object('vowelCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        myGlobalBuilder.get_object('consonantCellRenderer').set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        self.vowelStore.clear()
+        self.consonantStore.clear()
+        for g in all_graphemes:
+            if g in vowel_graphemes:
+                self.vowelStore.append([g])
+            else:
+                self.consonantStore.append([g])
+        self.dialog.show_all()
+        response = self.dialog.run()
+        self.dialog.hide()
+        return (response == 1)
+
+    def on_Vowel_doubleClick(self, widget, row, col):
+        '''Move the activated grapheme from the vowel list to the consonant list.'''
+        model = widget.get_model()
+        letter = model[row][0]
+        self.vowelStore.remove(model[row].iter)
+        self.consonantStore.append([letter])
+        for r in self.consonantStore:
+            if r[0] == letter:
+                self.consonantTreeView.get_selection().select_path(r.path)
+                self.consonantTreeView.scroll_to_cell(r.path)
+                break
+
+    def on_Consonant_doubleClick(self, widget, row, col):
+        '''Move the activated grapheme from the consonant list to the vowel list.'''
+        model = widget.get_model()
+        letter = model[row][0]
+        self.consonantStore.remove(model[row].iter)
+        self.vowelStore.append([letter])
+        for r in self.vowelStore:
+            if r[0] == letter:
+                self.vowelTreeView.get_selection().select_path(r.path)
+                self.vowelTreeView.scroll_to_cell(r.path)
+                break
+
+    def GetVowelGraphemes(self):
+        return set(row[0] for row in self.vowelStore)
+
+
 class DigraphsDialog:
     '''A class used to present a dialog for specifying the digraphs in the language.
     
@@ -705,6 +771,7 @@ class FilterDialog:
         
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object('filterDialog')
+        self.filterPOSStack = myGlobalBuilder.get_object('filterPOSStack')
         self.posTreeView = myGlobalBuilder.get_object('posTreeView')
         self.chkSyllableInitial = myGlobalBuilder.get_object('chkSyllableInitial')
         self.chkSyllableMedial = myGlobalBuilder.get_object('chkSyllableMedial')
@@ -737,6 +804,8 @@ class FilterDialog:
           POSfilters - a set of part of speech values which are selected in the current filter
           syllableFilters - a tuple of booleans for syllable filtering (initial, medial, final)
         '''
+        self.dialog.set_transient_for(myGlobalWindow.window)
+        self.dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
         # clear out the current parts of speech, and populate the list
         self.posListStore.clear()
         if POSlist:
@@ -747,9 +816,9 @@ class FilterDialog:
             for pos in sorted(POSlist, key=str.lower):
                 checked = (not POSfilters) or (pos in POSfilters)
                 self.posListStore.append([checked, pos])
+            self.filterPOSStack.set_visible_child_name('treeview')
         else:
-            # we don't have any parts of speech
-            self.posListStore.append([False, _("No lexicon part of speech data available.")])
+            self.filterPOSStack.set_visible_child_name('empty')
         
         # set the syllable filtering checkboxes appropriately
         if not syllableFilters:
@@ -1784,6 +1853,7 @@ will be output in decomposed format.""")
                         # process syllables: inserts "." markers and checks syllable position filters
                         # graphemes is reassigned so that "." markers appear in the highlighted output
                         matches, graphemes = process_syllables(graphemes, letter,
+                                                               vowel_graphemes=self.user_defined_vowels,
                                                                vowels_together=self.syllable_vowels_together,
                                                                consonants_together=self.syllable_consonants_together,
                                                                syllable_filters=self.syllable_filters)
@@ -2443,7 +2513,9 @@ Please try again.""")
         # syllable options
         self.syllable_vowels_together = False
         self.syllable_consonants_together = False
-        
+        # user_defined_vowels: set of grapheme strings classified as vowels, or None to use DEFAULT_VOWELS
+        self.user_defined_vowels = None
+
         # lessonTexts: dict of { grapheme (str), text of that lesson (str) }
         #    note: the grapheme can alternately be an integer which is an index into the sight word list
         self.lessonTexts = {}
@@ -2900,9 +2972,21 @@ introducing the letters in a primer.""")
     
     def on_btnDefineVowels_clicked(self, button):
         global myGlobalWindow
-        title = _("Information")
-        msg = _("Feature coming soon!")
-        SimpleMessage(title, 'dialog-information', msg)
+        analysis = myGlobalWindow.analysis
+        all_graphemes = set(g for gs in analysis.wordsAsGraphemes.values() for g in gs)
+        if not all_graphemes:
+            return
+        if analysis.user_defined_vowels is not None:
+            current_vowels = analysis.user_defined_vowels
+        else:
+            current_vowels = {g for g in all_graphemes if any(ch in DEFAULT_VOWELS for ch in g)}
+        dlg = myGlobalWindow.theDefineVowelsDialog
+        if dlg.Run(all_graphemes, current_vowels):
+            new_vowels = dlg.GetVowelGraphemes()
+            if new_vowels != analysis.user_defined_vowels:
+                analysis.user_defined_vowels = new_vowels
+                analysis.dataChanged = True
+                analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
     
     def on_teachingOrderTreeView_row_activated(self, widget, row, col):
         '''Double-click on a row, just pass this job to the analysis object.
@@ -3301,7 +3385,8 @@ will be output in decomposed format.""")
                     self.analysis.syllable_filters = None
                     self.analysis.syllable_vowels_together = False
                     self.analysis.syllable_consonants_together = False
-                
+                    self.analysis.user_defined_vowels = None
+
                 # load and unpack the options tuple, and set the options
                 options = pickle.load(f)
                 # set the new font, and make sure it gets applied through the window
@@ -3482,6 +3567,39 @@ will be output in decomposed format.""")
         dialog.destroy()
         return result
 
+    def ChooseSFMMarker(self, marker_list, label_text):
+        dialog = Gtk.Dialog(title=_("Choose SFM marker"),
+                            parent=self.window, flags=0)
+        dialog.add_buttons(Gtk.STOCK_OK, Gtk.ResponseType.OK,
+                           Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_border_width(15)
+
+        label = Gtk.Label(label=label_text)
+        label.set_xalign(0)
+
+        combo = Gtk.ComboBoxText()
+        for marker in marker_list:
+            combo.append_text('\\' + marker)
+        combo.set_active(0)
+
+        vbox.pack_start(label, False, False, 0)
+        vbox.pack_start(combo, False, False, 0)
+
+        box = dialog.get_content_area()
+        box.add(vbox)
+
+        dialog.show_all()
+
+        result = None
+        if dialog.run() == Gtk.ResponseType.OK:
+            # strip the leading backslash we added for display
+            result = combo.get_active_text()[1:]
+
+        dialog.destroy()
+        return result
+
     def AddLexicon(self):
         '''Allow user to select a LIFT or SFM lexicon file and import it.'''
         import lexicon_import
@@ -3509,6 +3627,7 @@ will be output in decomposed format.""")
         if chooser.run() == Gtk.ResponseType.OK:
             filename = chooser.get_filename()
             lexicon_data = []
+            show_no_data_warning = True
             if filename.lower().endswith(".lift"):
                 # fetch the XML tree from the file, along with a list of lexeme writing systems
                 tree, ws_list = lexicon_import.LiftLexiconPrep(filename)
@@ -3519,7 +3638,25 @@ will be output in decomposed format.""")
                 if selected_ws:
                     lexicon_data = lexicon_import.LoadLiftLexicon(tree, selected_ws)
             else:
-                lexicon_data = lexicon_import.LoadSFMLexicon(filename)
+                entries, lx_markers, pos_markers = lexicon_import.SFMLexiconPrep(filename)
+                if not lx_markers:
+                    show_no_data_warning = False
+                    title = _("No lexicon data loaded")
+                    msg = _("No \\lx markers were found in the file chosen.")
+                    SimpleMessage(title, 'dialog-warning', msg)
+                else:
+                    if len(lx_markers) == 1:
+                        selected_lx = lx_markers[0]
+                    else:
+                        selected_lx = self.ChooseSFMMarker(lx_markers, _("Select the lexeme marker to use:"))
+                    if selected_lx:
+                        if len(pos_markers) == 0:
+                            selected_pos = None
+                        elif len(pos_markers) == 1:
+                            selected_pos = pos_markers[0]
+                        else:
+                            selected_pos = self.ChooseSFMMarker(pos_markers, _("Select the part of speech marker to use:"))
+                        lexicon_data = lexicon_import.LoadSFMLexicon(entries, selected_lx, selected_pos)
             if lexicon_data:
                 self.analysis.AddLexiconData(filename, lexicon_data)
                 if myGlobalBuilder.get_object('showFullPathCheckButton').get_active():
@@ -3531,7 +3668,7 @@ will be output in decomposed format.""")
                 # loaded data so update data on screen
                 self.analysis.UpdateWordList(self.wordListStore)
                 self.ShowSummaryStatusBar()
-            else:
+            elif show_no_data_warning:
                 title = _("No lexicon data loaded")
                 msg = _("No meaningful lexicon data could be extracted from the file chosen.")
                 SimpleMessage(title, 'dialog-warning', msg)
@@ -3952,6 +4089,7 @@ will be output in decomposed format.""")
         self.theWordEditDialog = WordEditDialog()
         self.theSightWordsDialog = SightWordsDialog()
         self.theFilterDialog = FilterDialog()
+        self.theDefineVowelsDialog = DefineVowelsDialog()
         self.theConcordanceDialog = ConcordanceDialog()
         self.theConfigureSFMDialog = ConfigureSFMDialog()
         

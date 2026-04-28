@@ -75,9 +75,88 @@ def LoadLiftLexicon(tree, selected_ws):
 
     return entries
 
-def LoadSFMLexicon(filename):
+def SFMLexiconPrep(filename):
     '''
-    Load an SFM/Toolbox lexicon file.
-    Returns list of tuples: (lexeme, grammatical_info)
+    Parse an SFM/Toolbox file and return:
+        entries    = list of entries; each entry is a list of (sfm, value) pairs
+        lx_markers = sorted list of unique markers starting with "lx"
+        pos_markers = sorted list of unique markers starting with "ps"
+    A new entry begins whenever the bare "lx" marker is encountered.
+    Lines without a leading backslash are continuations of the previous marker.
     '''
-    return []
+    try:
+        with open(filename, encoding='utf-8') as f:
+            raw_lines = f.readlines()
+    except UnicodeDecodeError:
+        with open(filename, encoding='latin-1') as f:
+            raw_lines = f.readlines()
+
+    entries = []
+    current_entry = None
+    current_sfm = None
+    current_val = None
+    lx_set = set()
+    pos_set = set()
+
+    def _flush_field():
+        if current_sfm is not None and current_entry is not None:
+            current_entry.append((current_sfm, current_val))
+
+    for line in raw_lines:
+        line = line.rstrip('\n\r')
+        if not line.strip():
+            continue
+
+        if line.startswith('\\'):
+            _flush_field()
+            parts = line[1:].split(None, 1)
+            current_sfm = parts[0]
+            current_val = parts[1].strip() if len(parts) > 1 else ''
+
+            if current_sfm == 'lx':
+                if current_entry is not None:
+                    entries.append(current_entry)
+                current_entry = []
+
+            if current_sfm.startswith('lx'):
+                lx_set.add(current_sfm)
+            elif current_sfm.startswith('ps'):
+                pos_set.add(current_sfm)
+        else:
+            # continuation line
+            if current_val is not None:
+                current_val = current_val + ' ' + line.strip()
+
+    _flush_field()
+    if current_entry is not None:
+        entries.append(current_entry)
+
+    return entries, sorted(lx_set), sorted(pos_set)
+
+
+def LoadSFMLexicon(entries, selected_lx, selected_pos):
+    '''
+    Load lexical entries from parsed SFM entries.
+    selected_lx:  the sfm marker to use for the lexeme (e.g. "lx_CARS")
+    selected_pos: the sfm marker to use for part of speech, or None
+    Returns:
+        [{"lexeme": "...", "pos": "..."}]
+    Citation-form marker (lc / lc_CARS etc.) overrides the lexeme field when present.
+    '''
+    citation_sfm = 'lc' + selected_lx[2:]  # lx → lc, lx_CARS → lc_CARS
+
+    result = []
+    for entry in entries:
+        sfm_dict = {}
+        for sfm, val in entry:
+            sfm_dict[sfm] = val
+
+        lexeme = sfm_dict.get(citation_sfm) or sfm_dict.get(selected_lx, '')
+        lexeme = lexeme.strip()
+        if not lexeme:
+            continue
+
+        pos = sfm_dict.get(selected_pos, '').strip() if selected_pos else ''
+        result.append({'lexeme': lexeme, 'pos': pos})
+
+    return result
