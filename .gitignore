@@ -1,2 +1,3 @@
 *.glade~
 /locale/
+__pycache__/
