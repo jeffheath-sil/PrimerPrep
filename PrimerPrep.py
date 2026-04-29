@@ -19,11 +19,13 @@
 #
 # Modifications:
 # 4.0 JCH Apr 2026
-#    Add lexicon import (LIFT format)
-#    Add code to handle syllabification
+#    Add lexicon import (LIFT or SFM format), implement with external lexicon_import.py module
+#    In lexicon import, ask user to choose Writing System and certain SFM markers, as needed
 #    Add part of speech and syllable position filtering on Teaching Order tab
+#    Add code to handle syllabification, default list of vowels, method to define vowels
 #    Increase the dataModelVersion to 3 (POS and syllable filter variables), handle loading old data
 #    Fix error when backslashes are included in the SFMs to include or ignore
+#    Return to Word Discovery on New/Open Project, and supress the warning dialog
 #    Add tooltips to some UI elements
 # 3.41 JCH Oct 2025
 #    Add link to AI agent (Ask AI Assistant) in Help menu
@@ -281,35 +283,33 @@ DEFAULT_VOWELS = set(
     '\u064d'   # kasratan
 )
 
-def process_syllables(graphemes, letter, vowels=None, vowel_graphemes=None,
+def process_syllables(graphemes, letter, vowel_graphemes=None,
                       vowels_together=False, consonants_together=False, syllable_filters=None):
     '''Syllabify a grapheme list, inserting "." at syllable boundaries, and
     determine whether the target letter matches the active syllable position filters.
-    
+
     Uses the Maximum Onset Principle: a single consonant between two vowels
     belongs to the following syllable (V.CV); with two or more consonants,
     one stays as a coda and the rest attach to the next onset (VC.CV, VC.CCV).
-    
+
     Parameters:
       graphemes            - list of grapheme strings for the word
       letter               - the target grapheme to check position of
-      vowels               - set of vowel characters (defaults to DEFAULT_VOWELS)
+      vowel_graphemes      - set of grapheme strings classified as vowels; if None,
+                             falls back to checking individual characters against DEFAULT_VOWELS
       vowels_together      - if True, repeated vowels are treated as a single unit
       consonants_together  - if True, repeated consonants are treated as a single unit
-      syllable_filters     - tuple of booleans (initial, medial, final)
-    
+      syllable_filters     - tuple of booleans (initial, medial, final), or None for no filter
+
     Returns a tuple of (matches, syllabified_graphemes) where:
       matches              - True if syllable_filters is None, or if the letter occurs in
                              at least one of the active filter positions; False otherwise
       syllabified_graphemes - grapheme list with "." inserted at syllable boundaries
     '''
-    if vowels is None:
-        vowels = DEFAULT_VOWELS
-
     if vowel_graphemes is not None:
         is_vowel = [g in vowel_graphemes for g in graphemes]
     else:
-        is_vowel = [any(ch in vowels for ch in g) for g in graphemes]
+        is_vowel = [any(ch in DEFAULT_VOWELS for ch in g) for g in graphemes]
     n = len(is_vowel)
 
     # determine syllable break positions
@@ -350,7 +350,10 @@ def process_syllables(graphemes, letter, vowels=None, vowel_graphemes=None,
     
     # determine the syllable position of each occurrence of letter
     # determine together flag based on whether the target letter is a vowel or consonant
-    letter_is_vowel = any(ch in vowels for ch in letter)
+    if vowel_graphemes is not None:
+        letter_is_vowel = letter in vowel_graphemes
+    else:
+        letter_is_vowel = any(ch in DEFAULT_VOWELS for ch in letter)
     together = (vowels_together and letter_is_vowel) or (consonants_together and not letter_is_vowel)
     m = len(syllabified)
     initial = medial = final = False
@@ -2513,7 +2516,8 @@ Please try again.""")
         # syllable options
         self.syllable_vowels_together = False
         self.syllable_consonants_together = False
-        # user_defined_vowels: set of grapheme strings classified as vowels, or None to use DEFAULT_VOWELS
+        # user_defined_vowels: set of grapheme strings user has classified as vowels, 
+        #       if None, it will define graphemes as vowels if they contain a vowel from DEFAULT_VOWELS
         self.user_defined_vowels = None
 
         # lessonTexts: dict of { grapheme (str), text of that lesson (str) }
@@ -2933,33 +2937,14 @@ introducing the letters in a primer.""")
             myGlobalWindow.analysis.syllable_vowels_together = options[0]
             myGlobalWindow.analysis.syllable_consonants_together = options[1]
             
-            if myGlobalWindow.analysis.active_pos_filters or myGlobalWindow.analysis.syllable_filters:
-                # there is at least one filter active, show the filter button as active
-                myGlobalWindow.filterButton.get_style_context().add_class("button-filter-active")
-                # activate the filter cancel button
-                myGlobalWindow.filterCancelButton.set_sensitive(True)
-                # set the cancel button to the active image
-                pixbuf_on = GdkPixbuf.Pixbuf.new_from_file("PrimerPrepCancelFilterON.png")
-                myGlobalWindow.filterCancelImage.set_from_pixbuf(pixbuf_on)
-                # update the teaching order
-                myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
-            else:
-                # no active filters, so just run the filterCancelButton code to make sure display is correct
-                self.on_filterCancelButton_clicked(button)
+            myGlobalWindow.UpdateFilterCancelButton()
+            myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
     
     def on_filterCancelButton_clicked(self, button):
         '''Cancel an existing filter.'''
-        # make sure that the filters are off
         myGlobalWindow.analysis.active_pos_filters = None
         myGlobalWindow.analysis.syllable_filters = None
-        # show that the button is not active
-        myGlobalWindow.filterButton.get_style_context().remove_class("button-filter-active")
-        # deactivate the button
-        myGlobalWindow.filterCancelButton.set_sensitive(False)
-        # set the cancel button to the inactive image
-        pixbuf_off = GdkPixbuf.Pixbuf.new_from_file("PrimerPrepCancelFilterOFF.png")
-        myGlobalWindow.filterCancelImage.set_from_pixbuf(pixbuf_off)
-        # update the teaching order
+        myGlobalWindow.UpdateFilterCancelButton()
         myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
     
     def on_btnSelectNonePOS_clicked(self, button):
@@ -3215,6 +3200,8 @@ decomposed format, which may be different than your original source files.""")
         self.analysis.separateCombDiacritics = myGlobalBuilder.get_object('separateDiacriticsCheckButton').get_active()
         # the affix list has been cleared, so make sure it is cleared in the interface
         self.UpdateAffixList()
+        # make sure the filter cancel button reflects the cleared filter state
+        self.UpdateFilterCancelButton()
         
         # prevent the non-existant project or teaching order from being saved
         menu = myGlobalBuilder.get_object("saveProjectMenuItem")
@@ -3411,7 +3398,10 @@ will be output in decomposed format.""")
                                          myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
             self.analysis.UpdateWordList(self.wordListStore)
             self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
+
             self.UpdateAffixList()
+            # set the filter cancel button state to match the loaded filter settings
+            self.UpdateFilterCancelButton()
             self.ShowSummaryStatusBar()
             
             # allow the project to be saved
@@ -3599,6 +3589,19 @@ will be output in decomposed format.""")
 
         dialog.destroy()
         return result
+
+    def UpdateFilterCancelButton(self):
+        '''Set the filter button style and cancel button state to match the current filter settings.'''
+        if self.analysis.active_pos_filters or self.analysis.syllable_filters:
+            self.filterButton.get_style_context().add_class("button-filter-active")
+            self.filterCancelButton.set_sensitive(True)
+            pixbuf_on = GdkPixbuf.Pixbuf.new_from_file("PrimerPrepCancelFilterON.png")
+            self.filterCancelImage.set_from_pixbuf(pixbuf_on)
+        else:
+            self.filterButton.get_style_context().remove_class("button-filter-active")
+            self.filterCancelButton.set_sensitive(False)
+            pixbuf_off = GdkPixbuf.Pixbuf.new_from_file("PrimerPrepCancelFilterOFF.png")
+            self.filterCancelImage.set_from_pixbuf(pixbuf_off)
 
     def AddLexicon(self):
         '''Allow user to select a LIFT or SFM lexicon file and import it.'''
