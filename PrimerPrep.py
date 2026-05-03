@@ -4084,7 +4084,13 @@ will be output in decomposed format.""")
         # allow markup in the examples column (in teaching order) - clear "text" attribute first
         self.teachingOrderExamplesColumn.clear_attributes(self.teachingOrderExamplesCellRenderer)
         self.teachingOrderExamplesColumn.add_attribute(self.teachingOrderExamplesCellRenderer, "markup", 2)
-        
+        # GTK can miscalculate row heights when Pango markup (bold tags) is present, making some
+        # rows taller than others. Fixed height mode forces all rows to the same height, which
+        # avoids the bug; it requires all columns to use FIXED sizing.
+        for col in self.teachingOrderTreeView.get_columns():
+            col.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
+        self.teachingOrderTreeView.set_fixed_height_mode(True)
+
         # prepare the analysis dialogs for future use
         self.theAffixesDialog = AffixesDialog()
         self.theWordBreaksDialog = WordBreaksDialog()
