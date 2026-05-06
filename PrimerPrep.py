@@ -15,18 +15,23 @@
 #
 # by Jeff Heath, SIL Chad
 #
-# © 2025 SIL Global
+# © 2026 SIL Global
 #
 # Modifications:
-# 4.0 JCH Apr 2026
+# 4.00 JCH Apr-May 2026
 #    Add lexicon import (LIFT or SFM format), implement with external lexicon_import.py module
-#    In lexicon import, ask user to choose Writing System and certain SFM markers, as needed
-#    Add part of speech and syllable position filtering on Teaching Order tab
+#    In lexicon import, ask user to choose Writing System or certain SFM markers, as needed
+#    Add part of speech, syllable position and word position filtering on Teaching Order tab
+#      a single occurrence of the letter must satisfy both syllable and word position filters
 #    Add code to handle syllabification, default list of vowels, method to define vowels
-#    Increase the dataModelVersion to 3 (POS and syllable filter variables), handle loading old data
-#    Fix error when backslashes are included in the SFMs to include or ignore
+#    Add text filter field on Teaching Order tab to ALSO filter example words by content
+#    Upgrade filter fields on all three tabs to GtkSearchEntry (search icon, one-click clear)
+#    Increase the dataModelVersion to 3 (POS and position filter variables), handle loading old data
 #    Return to Word Discovery on New/Open Project, and supress the warning dialog
+#    Add "Don't remind me again for this session" option to the Word Discovery tab-switch warning
+#    Fix error when backslashes are included in the SFMs to include or ignore
 #    Add tooltips to some UI elements
+#    Set default window size to 1100x660
 # 3.41 JCH Oct 2025
 #    Add link to AI agent (Ask AI Assistant) in Help menu
 # 3.40 JCH Jun 2025
@@ -163,7 +168,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "4.0"
+progVersion = "4.00"
 progYear = "2026"
 dataModelVersion = 3
 DEBUG = False
@@ -254,6 +259,46 @@ def SimpleMessage(title, msgType, msg):
     dlg.run()
     dlg.hide()
 
+# present the Word Discovery tab-switch warning with a "don't remind me" checkbox;
+# returns True if the user checked the box
+def WordDiscoveryWarningMessage(title, msg):
+    dlg = Gtk.Dialog()
+    dlg.set_title(title)
+    dlg.set_transient_for(myGlobalWindow.window)
+    dlg.set_modal(True)
+    dlg.set_destroy_with_parent(True)
+    dlg.add_button(_("OK"), Gtk.ResponseType.OK)
+    content = dlg.get_content_area()
+    content.set_border_width(6)
+    content.set_spacing(0)
+    # row 1: warning icon + message text
+    hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+    hbox.set_margin_start(32)
+    hbox.set_margin_end(32)
+    icon = Gtk.Image.new_from_icon_name('dialog-warning', Gtk.IconSize.DIALOG)
+    hbox.pack_start(icon, False, False, 0)
+    label = Gtk.Label(label=msg)
+    label.set_line_wrap(True)
+    label.set_xalign(0.0)
+    hbox.pack_start(label, True, True, 0)
+    content.pack_start(hbox, True, True, 0)
+    # row 2: checkbox indented to align with the left edge of the message text above
+    # (spacer width = DIALOG icon width 48px + hbox spacing 20px)
+    row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+    row2.set_margin_start(32)
+    row2.set_margin_end(32)
+    spacer = Gtk.Box()
+    spacer.set_size_request(68, -1)
+    row2.pack_start(spacer, False, False, 0)
+    chk = Gtk.CheckButton(label=_("Don't remind me again for this session"))
+    row2.pack_start(chk, False, False, 0)
+    content.pack_start(row2, False, False, 0)
+    dlg.show_all()
+    dlg.run()
+    result = chk.get_active()
+    dlg.destroy()
+    return result
+
 # present a Y/N question to the user
 def SimpleYNQuestion(title, msgType, msg):
     global myGlobalBuilder
@@ -299,11 +344,12 @@ def process_syllables(graphemes, letter, vowel_graphemes=None,
                              falls back to checking individual characters against DEFAULT_VOWELS
       vowels_together      - if True, repeated vowels are treated as a single unit
       consonants_together  - if True, repeated consonants are treated as a single unit
-      syllable_filters     - tuple of booleans (initial, medial, final), or None for no filter
+      syllable_filters     - 3-tuple of booleans (initial, medial, final), or None for no filter;
+                             callers pass position_filters[:3] when using the 6-element tuple
 
     Returns a tuple of (matches, syllabified_graphemes) where:
       matches              - True if syllable_filters is None, or if the letter occurs in
-                             at least one of the active filter positions; False otherwise
+                             at least one of the active syllable positions; False otherwise
       syllabified_graphemes - grapheme list with "." inserted at syllable boundaries
     '''
     if vowel_graphemes is not None:
@@ -382,6 +428,8 @@ def process_syllables(graphemes, letter, vowel_graphemes=None,
                 medial = True
     
     positions = (initial, medial, final)
+    if syllable_filters is None:
+        return (True, syllabified)
     matches = any(f and p for f, p in zip(syllable_filters, positions))
     return (matches, syllabified)
 
@@ -771,7 +819,7 @@ class FilterDialog:
     def __init__(self):
         '''Prepare dialog for defining filter, for running later.'''
         global myGlobalBuilder
-        
+
         # keep track of some builder UI objects
         self.dialog = myGlobalBuilder.get_object('filterDialog')
         self.filterPOSStack = myGlobalBuilder.get_object('filterPOSStack')
@@ -779,7 +827,17 @@ class FilterDialog:
         self.chkSyllableInitial = myGlobalBuilder.get_object('chkSyllableInitial')
         self.chkSyllableMedial = myGlobalBuilder.get_object('chkSyllableMedial')
         self.chkSyllableFinal = myGlobalBuilder.get_object('chkSyllableFinal')
+        self.chkWordInitial = myGlobalBuilder.get_object('chkWordInitial')
+        self.chkWordMedial = myGlobalBuilder.get_object('chkWordMedial')
+        self.chkWordFinal = myGlobalBuilder.get_object('chkWordFinal')
         self.chkSyllableVowelsTogether = myGlobalBuilder.get_object('chkSyllableVowelsTogether')
+        # group checkboxes for "at least one per column" enforcement
+        self._syl_checkboxes = [self.chkSyllableInitial, self.chkSyllableMedial, self.chkSyllableFinal]
+        self._word_checkboxes = [self.chkWordInitial, self.chkWordMedial, self.chkWordFinal]
+        for cb in self._syl_checkboxes:
+            cb.connect('toggled', self._enforce_position_min, self._syl_checkboxes)
+        for cb in self._word_checkboxes:
+            cb.connect('toggled', self._enforce_position_min, self._word_checkboxes)
         self.chkSyllableConsonantsTogether = myGlobalBuilder.get_object('chkSyllableConsonantsTogether')
         # create a list store for holding the parts of speech
         self.posListStore = Gtk.ListStore(bool, str)
@@ -799,13 +857,15 @@ class FilterDialog:
         # set up the treeview to use the vernacular font
         self.posTreeView.get_style_context().add_class("vernacular")
     
-    def Run(self, POSlist, POSfilters, syllableFilters, syllableOptions):
-        '''Run the filter dialog to have user select the desired parts of speech and syllable locations.
-        
+    def Run(self, POSlist, POSfilters, positionFilters, syllableOptions):
+        '''Run the filter dialog to have user select the desired parts of speech and positions.
+
         Attributes:
-          POSlist - a set of loaded part of speech values
-          POSfilters - a set of part of speech values which are selected in the current filter
-          syllableFilters - a tuple of booleans for syllable filtering (initial, medial, final)
+          POSlist         - a set of loaded part of speech values
+          POSfilters      - a set of part of speech values which are selected in the current filter
+          positionFilters - 6-tuple of booleans (syl_init, syl_med, syl_fin,
+                            word_init, word_med, word_fin), or None for no filter
+          syllableOptions - tuple (vowels_together, consonants_together)
         '''
         self.dialog.set_transient_for(myGlobalWindow.window)
         self.dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
@@ -823,20 +883,34 @@ class FilterDialog:
         else:
             self.filterPOSStack.set_visible_child_name('empty')
         
-        # set the syllable filtering checkboxes appropriately
-        if not syllableFilters:
-            # default is everything checked (show letter in all positions)
-            syllableFilters = (True, True, True)
-        self.chkSyllableInitial.set_active(syllableFilters[0])
-        self.chkSyllableMedial.set_active(syllableFilters[1])
-        self.chkSyllableFinal.set_active(syllableFilters[2])
+        # set the position filtering checkboxes
+        if not positionFilters:
+            positionFilters = (True, True, True, True, True, True)
+        self.chkSyllableInitial.set_active(positionFilters[0])
+        self.chkSyllableMedial.set_active(positionFilters[1])
+        self.chkSyllableFinal.set_active(positionFilters[2])
+        self.chkWordInitial.set_active(positionFilters[3])
+        self.chkWordMedial.set_active(positionFilters[4])
+        self.chkWordFinal.set_active(positionFilters[5])
         self.chkSyllableVowelsTogether.set_active(syllableOptions[0])
         self.chkSyllableConsonantsTogether.set_active(syllableOptions[1])
-        
+        # enforce "at least one" state after all checkboxes are initialized
+        self._enforce_position_min(None, self._syl_checkboxes)
+        self._enforce_position_min(None, self._word_checkboxes)
+
         response = self.dialog.run()
         self.dialog.hide()
         return (response == 1)
     
+    def _enforce_position_min(self, _checkbox, checkboxes):
+        '''Disable the last checked checkbox in a group so at least one stays checked.'''
+        checked = [cb for cb in checkboxes if cb.get_active()]
+        if len(checked) == 1:
+            checked[0].set_sensitive(False)
+        else:
+            for cb in checkboxes:
+                cb.set_sensitive(True)
+
     def on_pos_toggled(self, widget, path):
         self.posListStore[path][0] = not self.posListStore[path][0]
     
@@ -858,11 +932,14 @@ class FilterDialog:
                 all_selected = False
         return None if all_selected else selected
     
-    def GetSyllableFilters(self):
+    def GetPositionFilters(self):
         filters = (
             self.chkSyllableInitial.get_active(),
             self.chkSyllableMedial.get_active(),
-            self.chkSyllableFinal.get_active()
+            self.chkSyllableFinal.get_active(),
+            self.chkWordInitial.get_active(),
+            self.chkWordMedial.get_active(),
+            self.chkWordFinal.get_active()
         )
         return None if all(filters) else filters
     
@@ -1851,16 +1928,59 @@ will be output in decomposed format.""")
                         if not word_pos or not (word_pos & self.active_pos_filters):
                             # we don't know POS or it doesn't match the filter, don't add it
                             continue
-                    # check to see if the word matches the syllable filter
-                    if self.syllable_filters:
-                        # process syllables: inserts "." markers and checks syllable position filters
-                        # graphemes is reassigned so that "." markers appear in the highlighted output
-                        matches, graphemes = process_syllables(graphemes, letter,
-                                                               vowel_graphemes=self.user_defined_vowels,
-                                                               vowels_together=self.syllable_vowels_together,
-                                                               consonants_together=self.syllable_consonants_together,
-                                                               syllable_filters=self.syllable_filters)
-                        if not matches:
+                    # check syllable and/or word position filters (occurrence-level AND:
+                    # a single occurrence of the letter must satisfy both active filters)
+                    if self.position_filters:
+                        syl_part    = self.position_filters[:3]
+                        word_part   = self.position_filters[3:]
+                        syl_active  = not all(syl_part) and any(syl_part)
+                        word_active = not all(word_part) and any(word_part)
+                        # syllabify once; passing syllable_filters=None returns the syllabified
+                        # graphemes without filtering, which we need for display and position checks
+                        _, syllabified = process_syllables(graphemes, letter,
+                                                           vowel_graphemes=self.user_defined_vowels,
+                                                           vowels_together=self.syllable_vowels_together,
+                                                           consonants_together=self.syllable_consonants_together)
+                        n_orig = len(graphemes)
+                        m      = len(syllabified)
+                        occurrence_found = False
+                        oi = 0  # original grapheme index (incremented for each non-"." element)
+                        for si, g in enumerate(syllabified):
+                            if g == '.':
+                                continue
+                            if g == letter:
+                                # syllable position: look at the adjacent elements in syllabified;
+                                # a "." or the word boundary means initial or final
+                                prev_g = syllabified[si - 1] if si > 0 else None
+                                next_g = syllabified[si + 1] if si < m - 1 else None
+                                is_syl_init = (prev_g is None or prev_g == '.')
+                                is_syl_fin  = (next_g is None or next_g == '.')
+                                is_syl_med  = not is_syl_init and not is_syl_fin
+                                # word position: use the original grapheme index
+                                is_word_init = (oi == 0)
+                                is_word_fin  = (oi == n_orig - 1)
+                                is_word_med  = not is_word_init and not is_word_fin
+                                syl_ok  = (not syl_active or
+                                           (syl_part[0] and is_syl_init) or
+                                           (syl_part[1] and is_syl_med)  or
+                                           (syl_part[2] and is_syl_fin))
+                                word_ok = (not word_active or
+                                           (word_part[0] and is_word_init) or
+                                           (word_part[1] and is_word_med)  or
+                                           (word_part[2] and is_word_fin))
+                                if syl_ok and word_ok:
+                                    occurrence_found = True
+                                    break
+                            oi += 1
+                        if not occurrence_found:
+                            continue
+                        # show syllable-boundary dots in the word display only when the
+                        # syllable position filter is active
+                        if syl_active:
+                            graphemes = syllabified
+                    # text filter: match against the plain word form (no syllable dots)
+                    if self.word_text_filter:
+                        if self.word_text_filter not in ''.join(g for g in graphemes if g != '.'):
                             continue
                     # highlight the current grapheme in bold
                     highlightedGraphemes = [f"<b>{g}</b>" if g == letter else g for g in graphemes]
@@ -2511,8 +2631,13 @@ Please try again.""")
         self.words_with_pos = {}
         # active_pos_filters: set of part of speech values that should be displayed or None for no filter
         self.active_pos_filters = None
-        # syllable_filters: tuple of syllable filter booleans (initial, medial, final) or None for no filter
-        self.syllable_filters = None
+        # position_filters: 6-tuple of filter booleans
+        #   (syl_initial, syl_medial, syl_final, word_initial, word_medial, word_final)
+        #   or None when no filter is active (all positions selected)
+        self.position_filters = None
+        # word_text_filter: string typed in the Teaching Order tab filter field,
+        #   or '' when no text filter is active
+        self.word_text_filter = ''
         # syllable options
         self.syllable_vowels_together = False
         self.syllable_consonants_together = False
@@ -2929,10 +3054,10 @@ introducing the letters in a primer.""")
         options = (myGlobalWindow.analysis.syllable_vowels_together, myGlobalWindow.analysis.syllable_consonants_together)
         if dlg.Run(myGlobalWindow.analysis.pos_tags,
                    myGlobalWindow.analysis.active_pos_filters,
-                   myGlobalWindow.analysis.syllable_filters, options):
+                   myGlobalWindow.analysis.position_filters, options):
             # returned True, so user clicked OK - process dialog results
             myGlobalWindow.analysis.active_pos_filters = dlg.GetSelectedPOS()
-            myGlobalWindow.analysis.syllable_filters = dlg.GetSyllableFilters()
+            myGlobalWindow.analysis.position_filters = dlg.GetPositionFilters()
             options = dlg.GetSyllableOptions()
             myGlobalWindow.analysis.syllable_vowels_together = options[0]
             myGlobalWindow.analysis.syllable_consonants_together = options[1]
@@ -2940,10 +3065,19 @@ introducing the letters in a primer.""")
             myGlobalWindow.UpdateFilterCancelButton()
             myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
     
+    def on_teachingOrderTextFilter_search_changed(self, entry):
+        '''Update the example words text filter as the user types.'''
+        myGlobalWindow.analysis.word_text_filter = entry.get_text()
+        myGlobalWindow.UpdateFilterCancelButton()
+        myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
+        entry.grab_focus_without_selecting()
+
     def on_filterCancelButton_clicked(self, button):
         '''Cancel an existing filter.'''
         myGlobalWindow.analysis.active_pos_filters = None
-        myGlobalWindow.analysis.syllable_filters = None
+        myGlobalWindow.analysis.position_filters = None
+        myGlobalWindow.analysis.word_text_filter = ''
+        myGlobalWindow.teachingOrderTextFilter.set_text('')
         myGlobalWindow.UpdateFilterCancelButton()
         myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
     
@@ -3116,12 +3250,13 @@ introducing the letters in a primer.""")
                     menu.set_sensitive(True)
             elif myGlobalNotebookPage >= 1 and index == 0:
                 # moving from a teaching order page back to word discovery, give warning that changes could cause loss of some information
-                if not myGlobalWindow.suppressTabWarning:
+                if not myGlobalWindow.suppressTabWarning and not myGlobalWindow.suppress_word_discovery_warning:
                     title = _("Warning")
                     msg = _("""If you make changes on this Word Discovery page, you may lose
 some changes in your Teaching Order, specifically your sight word
 lessons and the current teaching order.""")
-                    SimpleMessage(title, 'dialog-warning', msg)
+                    if WordDiscoveryWarningMessage(title, msg):
+                        myGlobalWindow.suppress_word_discovery_warning = True
                 myGlobalWindow.suppressTabWarning = False
             # remember which page we are on now
             myGlobalNotebookPage = index
@@ -3223,8 +3358,10 @@ decomposed format, which may be different than your original source files.""")
         myGlobalProjectName = ""
         self.window.set_title("PrimerPrep")
         self.suppressTabWarning = True
+        self.suppress_word_discovery_warning = False
         self.mainNB.set_current_page(0)
-    
+        self.suppressTabWarning = False
+
     def SaveProject(self):
         '''Save the project configuration, using the already specified filename
         (so this must follow an Open or Save As command to have a valid filename and path).
@@ -3369,10 +3506,12 @@ will be output in decomposed format.""")
                     self.analysis.pos_tags = set()
                     self.analysis.words_with_pos = {}
                     self.analysis.active_pos_filters = None
-                    self.analysis.syllable_filters = None
+                    self.analysis.position_filters = None
                     self.analysis.syllable_vowels_together = False
                     self.analysis.syllable_consonants_together = False
                     self.analysis.user_defined_vowels = None
+                # word_text_filter is never saved (it's transient UI state), so always reset it
+                self.analysis.word_text_filter = ''
 
                 # load and unpack the options tuple, and set the options
                 options = pickle.load(f)
@@ -3416,7 +3555,9 @@ will be output in decomposed format.""")
             
             # because teaching order rebuild may be necessary, it's good to start on first notebook tab
             self.suppressTabWarning = True
+            self.suppress_word_discovery_warning = False
             self.mainNB.set_current_page(0)
+            self.suppressTabWarning = False
         except (OSError, EOFError, pickle.UnpicklingError) as e:
             # general error reading the file
             title = _("Error")
@@ -3592,7 +3733,7 @@ will be output in decomposed format.""")
 
     def UpdateFilterCancelButton(self):
         '''Set the filter button style and cancel button state to match the current filter settings.'''
-        if self.analysis.active_pos_filters or self.analysis.syllable_filters:
+        if self.analysis.active_pos_filters or self.analysis.position_filters or self.analysis.word_text_filter:
             self.filterButton.get_style_context().add_class("button-filter-active")
             self.filterCancelButton.set_sensitive(True)
             pixbuf_on = GdkPixbuf.Pixbuf.new_from_file("PrimerPrepCancelFilterON.png")
@@ -4051,6 +4192,7 @@ will be output in decomposed format.""")
         self.window = myGlobalBuilder.get_object("mainWindow")
         self.mainNB = myGlobalBuilder.get_object("mainNB")
         self.suppressTabWarning = False
+        self.suppress_word_discovery_warning = False
         self.affixList = myGlobalBuilder.get_object("affixList")
         self.affixesExcluded = myGlobalBuilder.get_object("affixesExcludedRadioButton")
         self.countEachWord = myGlobalBuilder.get_object("countWordEachTimeRadioButton")
@@ -4073,6 +4215,7 @@ will be output in decomposed format.""")
         self.filterButton = myGlobalBuilder.get_object("filterButton")
         self.filterCancelButton = myGlobalBuilder.get_object("filterCancelButton")
         self.filterCancelImage = myGlobalBuilder.get_object("filterCancelImage")
+        self.teachingOrderTextFilter = myGlobalBuilder.get_object("teachingOrderTextFilter")
         self.lessonTextsTreeView = myGlobalBuilder.get_object("lessonTextsTreeView")
         self.lessonTextsTextView = myGlobalBuilder.get_object("lessonTextsTextView")
         self.lessonTextsTextBuffer = myGlobalBuilder.get_object("lessonTextsTextBuffer")
@@ -4112,6 +4255,7 @@ will be output in decomposed format.""")
         self.filterTextEntry.get_style_context().add_class("vernacular")
         self.lessonTextsTextView.get_style_context().add_class("vernacular")
         self.lessonTextsFilterTextEntry.get_style_context().add_class("vernacular")
+        self.teachingOrderTextFilter.get_style_context().add_class("vernacular")
         # set the vernacular font
         self.ApplyNewFont()
         

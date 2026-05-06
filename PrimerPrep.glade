@@ -237,7 +237,7 @@
                       <object class="GtkLabel" id="filterDlgSyllableLabel">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Select the syllable positions to display:</property>
+                        <property name="label" translatable="yes">Select the positions to display:</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -263,14 +263,182 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkCheckButton" id="chkSyllableInitial">
-                        <property name="label" translatable="yes">Syllable initial</property>
+                      <object class="GtkBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="receives-default">False</property>
-                        <property name="margin-left">18</property>
-                        <property name="active">True</property>
-                        <property name="draw-indicator">True</property>
+                        <property name="orientation">horizontal</property>
+                        <property name="halign">center</property>
+                        <property name="spacing">20</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">4</property>
+                            <child>
+                              <object class="GtkLabel" id="filterSyllablePosLabel">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="label" translatable="yes">Syllable position</property>
+                                <property name="xalign">0</property>
+                                <attributes>
+                                  <attribute name="weight" value="bold"/>
+                                </attributes>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkSyllableInitial">
+                                <property name="label" translatable="yes">Syllable initial</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkSyllableMedial">
+                                <property name="label" translatable="yes">Syllable medial</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">2</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkSyllableFinal">
+                                <property name="label" translatable="yes">Syllable final</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">3</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="filterAndLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">AND</property>
+                            <property name="valign">center</property>
+                            <attributes>
+                              <attribute name="weight" value="bold"/>
+                            </attributes>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">4</property>
+                            <child>
+                              <object class="GtkLabel" id="filterWordPosLabel">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="label" translatable="yes">Word position</property>
+                                <property name="xalign">0</property>
+                                <attributes>
+                                  <attribute name="weight" value="bold"/>
+                                </attributes>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkWordInitial">
+                                <property name="label" translatable="yes">Word initial</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkWordMedial">
+                                <property name="label" translatable="yes">Word medial</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">2</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="chkWordFinal">
+                                <property name="label" translatable="yes">Word final</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="receives-default">False</property>
+                                <property name="margin-left">18</property>
+                                <property name="active">True</property>
+                                <property name="draw-indicator">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">3</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">2</property>
+                          </packing>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -279,35 +447,49 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkCheckButton" id="chkSyllableMedial">
-                        <property name="label" translatable="yes">Syllable medial</property>
+                      <object class="GtkBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="receives-default">False</property>
-                        <property name="margin-left">18</property>
-                        <property name="active">True</property>
-                        <property name="draw-indicator">True</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <property name="halign">center</property>
+                        <child>
+                          <object class="GtkLabel" id="filterAtLeastOneLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">At least one box in each column must be checked.</property>
+                            <attributes>
+                              <attribute name="scale" value="0.85"/>
+                              <attribute name="style" value="italic"/>
+                            </attributes>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="filterCheckAllLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Check all boxes in a column to ignore that filter.</property>
+                            <attributes>
+                              <attribute name="scale" value="0.85"/>
+                              <attribute name="style" value="italic"/>
+                            </attributes>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
                         <property name="position">3</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkCheckButton" id="chkSyllableFinal">
-                        <property name="label" translatable="yes">Syllable final</property>
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="receives-default">False</property>
-                        <property name="margin-left">18</property>
-                        <property name="active">True</property>
-                        <property name="draw-indicator">True</property>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">4</property>
                       </packing>
                     </child>
                     <child>
@@ -318,7 +500,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">5</property>
+                        <property name="position">4</property>
                       </packing>
                     </child>
                     <child>
@@ -336,7 +518,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">6</property>
+                        <property name="position">5</property>
                       </packing>
                     </child>
                     <child>
@@ -351,7 +533,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">7</property>
+                        <property name="position">6</property>
                       </packing>
                     </child>
                     <child>
@@ -365,7 +547,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">8</property>
+                        <property name="position">7</property>
                       </packing>
                     </child>
                     <child>
@@ -379,7 +561,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">9</property>
+                        <property name="position">8</property>
                       </packing>
                     </child>
                   </object>
@@ -467,6 +649,8 @@
     <property name="name">mainWindow</property>
     <property name="can-focus">False</property>
     <property name="title">PrimerPrep</property>
+    <property name="default-width">1100</property>
+    <property name="default-height">660</property>
     <property name="window-position">center</property>
     <signal name="delete-event" handler="on_mainWindow_delete_event" swapped="no"/>
     <child>
@@ -1201,9 +1385,6 @@ the Language:</property>
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <property name="label" translatable="yes">Filter:</property>
-                            <attributes>
-                              <attribute name="weight" value="bold"/>
-                            </attributes>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -1213,14 +1394,12 @@ the Language:</property>
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkEntry" id="filterTextEntry">
+                          <object class="GtkSearchEntry" id="filterTextEntry">
                             <property name="name">filterTextEntry</property>
                             <property name="visible">True</property>
                             <property name="can-focus">True</property>
-                            <property name="invisible-char">●</property>
-                            <property name="primary-icon-activatable">False</property>
-                            <property name="secondary-icon-activatable">False</property>
-                            <signal name="changed" handler="on_filterTextEntry_changed" swapped="no"/>
+                            <property name="tooltip-text" translatable="yes">List all words that contain this string</property>
+                            <signal name="search-changed" handler="on_filterTextEntry_changed" swapped="no"/>
                           </object>
                           <packing>
                             <property name="expand">True</property>
@@ -1318,9 +1497,49 @@ the Language:</property>
                 <property name="border-width">5</property>
                 <property name="spacing">3</property>
                 <child>
+                  <object class="GtkBox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="orientation">horizontal</property>
+                    <property name="halign">end</property>
+                    <property name="spacing">5</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">Filter:</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">False</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkSearchEntry" id="teachingOrderTextFilter">
+                        <property name="visible">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="tooltip-text" translatable="yes">Show example words that contain this string</property>
+                        <signal name="search-changed" handler="on_teachingOrderTextFilter_search_changed" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">False</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
                   <object class="GtkScrolledWindow" id="teachingOrderScrolledWindow">
                     <property name="visible">True</property>
                     <property name="can-focus">True</property>
+                    <property name="expand">True</property>
                     <child>
                       <object class="GtkTreeView" id="teachingOrderTreeView">
                         <property name="visible">True</property>
@@ -1379,7 +1598,7 @@ the Language:</property>
                   <packing>
                     <property name="expand">True</property>
                     <property name="fill">True</property>
-                    <property name="position">0</property>
+                    <property name="position">1</property>
                   </packing>
                 </child>
                 <child>
@@ -1390,7 +1609,7 @@ the Language:</property>
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">1</property>
+                    <property name="position">2</property>
                   </packing>
                 </child>
                 <child>
@@ -1491,7 +1710,7 @@ the Language:</property>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
                     <property name="padding">2</property>
-                    <property name="position">2</property>
+                    <property name="position">3</property>
                   </packing>
                 </child>
               </object>
@@ -1617,9 +1836,6 @@ the Language:</property>
                                 <property name="can-focus">False</property>
                                 <property name="valign">center</property>
                                 <property name="label" translatable="yes">Filter:</property>
-                                <attributes>
-                                  <attribute name="weight" value="bold"/>
-                                </attributes>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -1629,15 +1845,12 @@ the Language:</property>
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkEntry" id="lessonTextsFilterTextEntry">
+                              <object class="GtkSearchEntry" id="lessonTextsFilterTextEntry">
                                 <property name="name">lessonTextsFilterTextEntry</property>
                                 <property name="visible">True</property>
                                 <property name="can-focus">True</property>
-                                <property name="tooltip-text" translatable="yes">Enter the text to mark in bold</property>
-                                <property name="invisible-char">●</property>
-                                <property name="primary-icon-activatable">False</property>
-                                <property name="secondary-icon-activatable">False</property>
-                                <signal name="changed" handler="on_lessonTextsFilterTextEntry_changed" swapped="no"/>
+                                <property name="tooltip-text" translatable="yes">Mark in bold this string</property>
+                                <signal name="search-changed" handler="on_lessonTextsFilterTextEntry_changed" swapped="no"/>
                               </object>
                               <packing>
                                 <property name="expand">True</property>
