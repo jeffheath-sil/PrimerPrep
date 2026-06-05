@@ -4,24 +4,22 @@
 [Setup]
 AppId={{98147582-17F0-4551-B49E-DB30B1607314}
 AppName=PrimerPrep
-AppVersion=4.00
+AppVersion=4.01
 AppPublisher=SIL International
-VersionInfoVersion=4.00
+VersionInfoVersion=4.01
 DefaultDirName={autopf}\SIL\PrimerPrep
 DefaultGroupName=PrimerPrep
 UninstallDisplayIcon={uninstallexe}
 SetupIconFile=PrimerPrep.ico
 Compression=lzma2
 SolidCompression=yes
-OutputBaseFilename=PrimerPrep Installer v4.00
+OutputBaseFilename=PrimerPrep Installer v4.01
 
 [Files]
 Source: "dist\PrimerPrep\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "PrimerPrep_project.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "CharisSIL-Regular.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis SIL Regular"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "CharisSIL-Bold.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis SIL Bold"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "CharisSILCompact-Regular.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis SIL Compact Regular"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "CharisSILCompact-Bold.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis SIL Compact Bold"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "Charis-Regular.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis Regular"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "Charis-Bold.ttf"; DestDir: "{autofonts}"; FontInstall: "Charis Bold"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

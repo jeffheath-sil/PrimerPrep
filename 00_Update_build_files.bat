@@ -5,10 +5,8 @@ xcopy /Y/D PrimerPrep.ico C:\Util\build\PrimerPrep\
 xcopy /Y/D PrimerPrep_project.ico C:\Util\build\PrimerPrep\
 xcopy /Y/D PrimerPrepSplash.py C:\Util\build\PrimerPrep\
 xcopy /Y/D PrimerPrepSplash.png C:\Util\build\PrimerPrep\
-xcopy /Y/D CharisSIL-Regular.ttf C:\Util\build\PrimerPrep\
-xcopy /Y/D CharisSIL-Bold.ttf C:\Util\build\PrimerPrep\
-xcopy /Y/D CharisSILCompact-Regular.ttf C:\Util\build\PrimerPrep\
-xcopy /Y/D CharisSILCompact-Bold.ttf C:\Util\build\PrimerPrep\
+xcopy /Y/D Charis-Regular.ttf C:\Util\build\PrimerPrep\
+xcopy /Y/D Charis-Bold.ttf C:\Util\build\PrimerPrep\
 xcopy /Y/S/D Help C:\Util\build\PrimerPrep\Help\
 xcopy /Y/S/D translations C:\Util\build\PrimerPrep\translations\
 xcopy /Y/D PrimerPrep.spec C:\Util\build\PrimerPrep\

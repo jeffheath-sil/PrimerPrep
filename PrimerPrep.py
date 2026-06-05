@@ -18,6 +18,15 @@
 # © 2026 SIL Global
 #
 # Modifications:
+# 4.01 JCH Jun 2026
+#    Fix teaching order modified by drag-and-drop not preserved after save and reload
+#    Fix Arabic combining diacritics (harakat) invisible in Lesson Texts when colored differently
+#      from base character; display them separately rendered over a U+25CC dotted circle
+#    Fix vernacular font not applying to Lesson Texts tab after loading a project
+#    Fix teaching order row heights measured incorrectly on first display
+#    Store word POS as list (not set) so we can identify homonyms
+#    New Project now resets to the default font and is not considered to have unsaved data
+#    Update bundled font from Charis SIL to Charis (new version)
 # 4.00 JCH Apr-May 2026
 #    Add lexicon import (LIFT or SFM format), implement with external lexicon_import.py module
 #    In lexicon import, ask user to choose Writing System or certain SFM markers, as needed
@@ -168,7 +177,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "4.00"
+progVersion = "4.01"
 progYear = "2026"
 dataModelVersion = 3
 DEBUG = False
@@ -450,6 +459,9 @@ class VernacularRenderer:
     '''
     
     def SetFont(self, fntName):
+        '''Apply a new vernacular font by name (e.g. "Scheherazade New Medium 16").
+        Updates vernFontDesc, the CellRendererText, and the "vernacular" CSS class.
+        '''
         self.fontName = fntName
         # set up the font description and CellRendererText for vernacular text in TreeViews
         self.vernFontDesc = Pango.FontDescription(self.fontName)
@@ -461,7 +473,7 @@ class VernacularRenderer:
             # (note that the literal braces need to be doubled, as f-strings use braces for variables)
             VernacularCSS = f"""
 .vernacular {{
-  font-family: '{m.group(1)}', 'Charis SIL', Ubuntu, Gentium, serif;
+  font-family: '{self.vernFontDesc.get_family()}', Charis, Ubuntu, Gentium, serif;
   font-size: {m.group(2)}pt;
 }}
 """
@@ -486,13 +498,11 @@ class VernacularRenderer:
         '''Initialize this Renderer object's attributes with the defaults.
         '''
         global myGlobalCSS
-        # Had some difficulties with Charis SIL Semi-Condensed?
         if platform.system() == "Windows":
-            fntName = "Charis SIL Semi-Condensed 14"
+            self.defaultFontName = "Charis 14"
         else:
-            fntName = "Ubuntu 14"
-        #fntName = "Gentium 14"
-        
+            self.defaultFontName = "Ubuntu 14"
+
         # set up the global (static) CSS provider
         self.global_style_provider = Gtk.CssProvider()
         self.global_style_provider.load_from_data(bytes(myGlobalCSS.encode()))
@@ -508,7 +518,7 @@ class VernacularRenderer:
         self.vernRendererText = Gtk.CellRendererText()
         
         # set the font for the FontDescription/CellRendererText and the VernacularCSS
-        self.SetFont(fntName)
+        self.SetFont(self.defaultFontName)
 
 
 class AffixesDialog:
@@ -1288,7 +1298,7 @@ class WordAnalysis:
             if lexeme and pos:
                 # save for POS filtering
                 lexeme = unicodedata.normalize('NFD', lexeme.lower())
-                self.words_with_pos.setdefault(lexeme, set()).add(pos)
+                self.words_with_pos.setdefault(lexeme, []).append(pos)
                 self.pos_tags.add(pos)
         
         # check the lines for encoding errors
@@ -1925,7 +1935,7 @@ will be output in decomposed format.""")
                     if self.active_pos_filters:
                         # there is an active part of speech filter - verify that this word passes
                         word_pos = self.words_with_pos.get(word)
-                        if not word_pos or not (word_pos & self.active_pos_filters):
+                        if not word_pos or not any(p in self.active_pos_filters for p in word_pos):
                             # we don't know POS or it doesn't match the filter, don't add it
                             continue
                     # check syllable and/or word position filters (occurrence-level AND:
@@ -2627,7 +2637,8 @@ Please try again.""")
         
         # pos_tags: set of different part of speech values
         self.pos_tags = set()
-        # words_with_pos: dict of { lexeme (str), set of parts of speech (str) }
+        # words_with_pos: dict of { lexeme (str), list of parts of speech (str) }
+        #   lexeme with more than one entry in list is a homonym (could have identical POS's)
         self.words_with_pos = {}
         # active_pos_filters: set of part of speech values that should be displayed or None for no filter
         self.active_pos_filters = None
@@ -3357,10 +3368,15 @@ decomposed format, which may be different than your original source files.""")
         # make sure there is no project name, including in the window title
         myGlobalProjectName = ""
         self.window.set_title("PrimerPrep")
+        # reset the vernacular font to the application default
+        myGlobalRenderer.SetFont(myGlobalRenderer.defaultFontName)
+        self.ApplyNewFont()
         self.suppressTabWarning = True
         self.suppress_word_discovery_warning = False
         self.mainNB.set_current_page(0)
         self.suppressTabWarning = False
+        # nothing to save yet
+        self.analysis.dataChanged = False
 
     def SaveProject(self):
         '''Save the project configuration, using the already specified filename
@@ -3494,7 +3510,7 @@ decomposed format, which may be different than your original source files.""")
                     self.analysis.dataChanged = True
                 else:
                     if self.analysis.containsNFC and self.analysis.containsNFD:
-                        # warn the user that this data contains inconsistent encoding
+                        # re-warn the user that this data contains inconsistent encoding
                         title = _("Encoding error")
                         msg = _("""Warning: This is a reminder that your input data has inconsistent encoding,
 with some characters composed and some decomposed. Ask a consultant to help you
@@ -3510,17 +3526,28 @@ will be output in decomposed format.""")
                     self.analysis.syllable_vowels_together = False
                     self.analysis.syllable_consonants_together = False
                     self.analysis.user_defined_vowels = None
+                    self.analysis.dataChanged = True
+                
                 # word_text_filter is never saved (it's transient UI state), so always reset it
                 self.analysis.word_text_filter = ''
 
                 # load and unpack the options tuple, and set the options
                 options = pickle.load(f)
+                # save flags before applying options: ApplyNewFont() calls ProcessAffixes()
+                # which sets teachingOrderChanged = True, and the radio button set_active()
+                # handlers also set both flags to True on the just-loaded analysis, causing
+                # CalculateTeachingOrder() to overwrite the saved teaching order the next
+                # time the user switches to that tab
+                saved_teachingOrderChanged = self.analysis.teachingOrderChanged
+                saved_dataChanged = self.analysis.dataChanged
                 # set the new font, and make sure it gets applied through the window
                 myGlobalRenderer.SetFont(options[0])
                 self.ApplyNewFont()
                 # set other options
                 self.affixesExcluded.set_active(options[1])
                 self.countEachWord.set_active(options[2])
+                self.analysis.teachingOrderChanged = saved_teachingOrderChanged
+                self.analysis.dataChanged = saved_dataChanged
             
             # save the path and filename (and update myGlobalPath)
             myGlobalProjectPath = os.path.dirname(filename)
@@ -3731,6 +3758,27 @@ will be output in decomposed format.""")
         dialog.destroy()
         return result
 
+    def _on_teaching_order_first_draw(self, tv, cr):
+        '''Fires on the very first draw of the Teaching Order TreeView. Disconnects itself,
+        then schedules a list repopulation via idle_add so it runs after the frame completes —
+        at which point GTK has a fully initialized render context and can correctly measure
+        Pango markup row heights.'''
+        tv.disconnect_by_func(self._on_teaching_order_first_draw)
+        GLib.idle_add(self._fix_teaching_order_heights_after_draw)
+
+    def _fix_teaching_order_heights_after_draw(self):
+        # Disconnect model before batch clear+re-add so GTK doesn't redraw on every append,
+        # then reconnect — this forces a height remeasure with the now-initialized render context.
+        tv = self.teachingOrderTreeView
+        ls = self.teachingOrderListStore
+        rows = [[row[0], row[1], row[2], row[3]] for row in ls]
+        tv.set_model(None)
+        ls.clear()
+        for row in rows:
+            ls.append(row)
+        tv.set_model(ls)
+        return False
+
     def UpdateFilterCancelButton(self):
         '''Set the filter button style and cancel button state to match the current filter settings.'''
         if self.analysis.active_pos_filters or self.analysis.position_filters or self.analysis.word_text_filter:
@@ -3831,6 +3879,7 @@ will be output in decomposed format.""")
         TODO: If a lesson has a character that doesn't appear at all in the loaded texts,
         it is treated as untaught residue. Is that correct?
         '''
+        global myGlobalHandler
         # first check buffer for any NFC characters, and convert them to NFD
         text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False).lower()
         textNFD = unicodedata.normalize('NFD', text)
@@ -3838,7 +3887,18 @@ will be output in decomposed format.""")
             # defer normalization so we don't modify the buffer inside a signal handler
             GLib.idle_add(self._save_normalized_lessontext, buffer, textNFD)
             return
-        
+
+        # Remove any U+25CC (dotted circle) characters inserted by a prior MarkUntaught call.
+        # Each inserted ◌ sits immediately before the combining mark it displays, so deleting
+        # just the ◌ restores the original base+Mn cluster without removing the Mn itself.
+        _dc_ranges = [(_i, _i + 1) for _i, _ch in enumerate(text) if _ch == '◌']
+        if _dc_ranges:
+            buffer.handler_block_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+            for _s, _e in reversed(_dc_ranges):
+                buffer.delete(buffer.get_iter_at_offset(_s),
+                               buffer.get_iter_at_offset(_e))
+            buffer.handler_unblock_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+
         # find out which lesson is selected, to know what letters/sight words have been taught
         sel = self.teachingOrderTreeView.get_selection()
         (model, row) = sel.get_selected()
@@ -3945,7 +4005,11 @@ will be output in decomposed format.""")
         secStart = 0
         # start in "taught" section
         inTaughtSection = True
-        
+        # deferred dotted-circle insertions: list of (pos, mn_char, mn_is_taught).
+        # pos is the Mn's current position in the buffer.  Processing in reverse keeps
+        # earlier offsets valid because inserting ◌ before an Mn only shifts later positions.
+        deferred_insertions = []
+
         # create a regex for finding the next word chunk
         findWordChunk = re.compile(r'(.*?)([' + wordBreaks + ']+|$)')
         
@@ -3976,44 +4040,52 @@ will be output in decomposed format.""")
             while pos < endWordPos:
                 m = findAllGraphemes.match(text, pos)
                 if not m:
-                    # grapheme not found, so must be untaught
-                    # (should only happen if it's a character not in the loaded texts?)
-                    if inTaughtSection:
-                        # switch taught/untaught section
-                        if pos > secStart:
-                            buffer.remove_tag(self.untaughtTag,
-                                              buffer.get_iter_at_offset(secStart), 
-                                              buffer.get_iter_at_offset(pos))
-                            logger.debug("taught ({}-{})".format(secStart, pos))
-                            secStart = pos
-                        inTaughtSection = False
+                    # Grapheme not found. Combining marks (Mn, e.g. untracked Arabic harakat)
+                    # are left in the current section so they inherit their base character's color.
+                    # Any other unmatched character is treated as untaught.
+                    if unicodedata.category(text[pos]) != 'Mn':
+                        if inTaughtSection:
+                            if pos > secStart:
+                                buffer.remove_tag(self.untaughtTag,
+                                                  buffer.get_iter_at_offset(secStart),
+                                                  buffer.get_iter_at_offset(pos))
+                                logger.debug("taught ({}-{})".format(secStart, pos))
+                                secStart = pos
+                            inTaughtSection = False
                     # move to the next character
                     pos += 1
                 else:
                     # grapheme was found
                     gr = m.group(1)
-                    if gr in graphemesTaughtSet:
-                        # this grapheme has already been taught
-                        if not inTaughtSection:
-                            # switch taught/untaught section
-                            if pos > secStart:
-                                buffer.apply_tag(self.untaughtTag,
-                                                  buffer.get_iter_at_offset(secStart), 
-                                                  buffer.get_iter_at_offset(pos))
-                                logger.debug("untaught ({}-{})".format(secStart, pos))
-                                secStart = pos
-                            inTaughtSection = True
+                    if unicodedata.category(gr[0]) == 'Mn':
+                        # Combining mark (e.g. Arabic harakat): inserting ◌ immediately
+                        # before it (at its current buffer position) makes it attach to ◌
+                        # instead of the base consonant, so both can have independent colors.
+                        mn_is_taught = gr in graphemesTaughtSet
+                        if mn_is_taught != inTaughtSection:
+                            deferred_insertions.append((pos, gr, mn_is_taught))
+                        # Don't change section state — leave base color covering this Mn
                     else:
-                        # this grapheme hasn't been taught
-                        if inTaughtSection:
-                            # switch taught/untaught section
-                            if pos > secStart:
-                                buffer.remove_tag(self.untaughtTag,
-                                                  buffer.get_iter_at_offset(secStart), 
-                                                  buffer.get_iter_at_offset(pos))
-                                logger.debug("taught ({}-{})".format(secStart, pos))
-                                secStart = pos
-                            inTaughtSection = False
+                        if gr in graphemesTaughtSet:
+                            # this grapheme has already been taught
+                            if not inTaughtSection:
+                                if pos > secStart:
+                                    buffer.apply_tag(self.untaughtTag,
+                                                      buffer.get_iter_at_offset(secStart),
+                                                      buffer.get_iter_at_offset(pos))
+                                    logger.debug("untaught ({}-{})".format(secStart, pos))
+                                    secStart = pos
+                                inTaughtSection = True
+                        else:
+                            # this grapheme hasn't been taught
+                            if inTaughtSection:
+                                if pos > secStart:
+                                    buffer.remove_tag(self.untaughtTag,
+                                                      buffer.get_iter_at_offset(secStart),
+                                                      buffer.get_iter_at_offset(pos))
+                                    logger.debug("taught ({}-{})".format(secStart, pos))
+                                    secStart = pos
+                                inTaughtSection = False
                     # move past this grapheme
                     pos += len(gr)
             # move the pos pointer past wordBreaks
@@ -4040,16 +4112,41 @@ will be output in decomposed format.""")
         else:
             if pos > secStart:
                 buffer.apply_tag(self.untaughtTag,
-                                  buffer.get_iter_at_offset(secStart), 
+                                  buffer.get_iter_at_offset(secStart),
                                   buffer.get_iter_at_offset(pos))
                 logger.debug("untaught ({}-{})".format(secStart, pos))
-        
+
+        # Insert a U+25CC (dotted circle) immediately before each deferred Mn grapheme.
+        # This breaks the base+Mn glyph cluster: the Mn now attaches to ◌ instead of the
+        # base consonant, so both can be colored independently.  The ◌+Mn pair is then
+        # tagged with the Mn's own taught/untaught color.
+        # Process in reverse order so inserting ◌ before a later Mn doesn't shift the
+        # buffer offsets of earlier Mn positions.
+        if deferred_insertions:
+            buffer.handler_block_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+            for mn_pos, mn_char, mn_is_taught in reversed(deferred_insertions):
+                buffer.insert(buffer.get_iter_at_offset(mn_pos), chr(0x25cc))
+                # Tag [◌][Mn] — ◌ at mn_pos, Mn at mn_pos+1
+                start_iter = buffer.get_iter_at_offset(mn_pos)
+                end_iter = buffer.get_iter_at_offset(mn_pos + 1 + len(mn_char))
+                if mn_is_taught:
+                    buffer.remove_tag(self.untaughtTag, start_iter, end_iter)
+                else:
+                    buffer.apply_tag(self.untaughtTag, start_iter, end_iter)
+            buffer.handler_unblock_by_func(myGlobalHandler.on_lessonTextsTextBuffer_changed)
+
     def SaveLessonText(self, grapheme):
-        # save out the current text into the entry for the previously selected grapheme
+        # Save the lesson text editor contents for the given grapheme back into
+        # self.analysis.lessonTexts.  Called before switching to a different grapheme
+        # so the previous entry is not lost.  Strips U+25CC display-only sequences
+        # (inserted by MarkUntaught) before saving so they don't end up in the data.
         if self.analysis.selectedGrapheme is not None:
             s = self.lessonTextsTextBuffer.get_start_iter()
             e = self.lessonTextsTextBuffer.get_end_iter()
-            self.analysis.lessonTexts[grapheme] = self.lessonTextsTextBuffer.get_text(s, e, False)
+            text = self.lessonTextsTextBuffer.get_text(s, e, False)
+            # Strip any U+25CC (dotted circle) characters inserted by MarkUntaught.
+            # Only the ◌ is removed; the Mn it was paired with stays in the text.
+            self.analysis.lessonTexts[grapheme] = text.replace('◌', '')
     
     def UpdateAffixList(self):
         # update the affix list field with new affixes (add/remove vernacular class, as necessary)
@@ -4233,6 +4330,11 @@ will be output in decomposed format.""")
         for col in self.teachingOrderTreeView.get_columns():
             col.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
         self.teachingOrderTreeView.set_fixed_height_mode(True)
+        # Connect to the first draw of the Teaching Order TreeView. After that draw completes,
+        # repopulate the list so GTK measures row heights with a fully initialized render context.
+        # (idle_add and map-signal approaches fire too early — before GTK has the context needed
+        # to correctly measure Pango markup row heights.)
+        self.teachingOrderTreeView.connect('draw', self._on_teaching_order_first_draw)
 
         # prepare the analysis dialogs for future use
         self.theAffixesDialog = AffixesDialog()
