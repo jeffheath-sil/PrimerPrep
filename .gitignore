@@ -1,3 +1,4 @@
 *.glade~
 /locale/
 __pycache__/
+.claude/
