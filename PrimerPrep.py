@@ -18,8 +18,10 @@
 # © 2026 SIL Global
 #
 # Modifications:
+# 4.02 JCH Jun 2026
+#    Additional tweaks for teaching order row height issues
 # 4.01 JCH Jun 2026
-#    Fix teaching order modified by drag-and-drop not preserved after save and reload
+#    Fix problem where teaching order was recalculated on a freshly loaded project
 #    Fix Arabic combining diacritics (harakat) invisible in Lesson Texts when colored differently
 #      from base character; display them separately rendered over a U+25CC dotted circle
 #    Fix vernacular font not applying to Lesson Texts tab after loading a project
@@ -177,7 +179,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "4.01"
+progVersion = "4.02"
 progYear = "2026"
 dataModelVersion = 3
 DEBUG = False
@@ -3251,6 +3253,8 @@ introducing the letters in a primer.""")
                     myGlobalWindow.analysis.CalculateTeachingOrder(myGlobalWindow.affixesExcluded.get_active(),
                                                                    myGlobalWindow.countEachWord.get_active())
                     myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
+                    if not myGlobalWindow._teaching_order_heights_fixed:
+                        GLib.idle_add(myGlobalWindow._fix_teaching_order_heights_after_draw)
                     # reset the selection of the Teaching Order to the beginning of the lists
                     treeview = myGlobalWindow.teachingOrderTreeView
                     treeview.get_selection().select_path(Gtk.TreePath("0"))
@@ -3364,6 +3368,7 @@ decomposed format, which may be different than your original source files.""")
         text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
         text.set_text("")
         self.teachingOrderListStore.clear()
+        self._teaching_order_heights_fixed = False
         self.ShowSummaryStatusBar()
         # make sure there is no project name, including in the window title
         myGlobalProjectName = ""
@@ -3564,6 +3569,9 @@ will be output in decomposed format.""")
                                          myGlobalBuilder.get_object('showFullPathCheckButton').get_active())
             self.analysis.UpdateWordList(self.wordListStore)
             self.analysis.UpdateTeachingOrderList(self.teachingOrderListStore)
+            # Remeasure row heights after the rows are populated. idle_add defers this
+            # until after the current frame so GTK has a fully initialized render context.
+            GLib.idle_add(self._fix_teaching_order_heights_after_draw)
 
             self.UpdateAffixList()
             # set the filter cancel button state to match the loaded filter settings
@@ -3758,17 +3766,9 @@ will be output in decomposed format.""")
         dialog.destroy()
         return result
 
-    def _on_teaching_order_first_draw(self, tv, cr):
-        '''Fires on the very first draw of the Teaching Order TreeView. Disconnects itself,
-        then schedules a list repopulation via idle_add so it runs after the frame completes —
-        at which point GTK has a fully initialized render context and can correctly measure
-        Pango markup row heights.'''
-        tv.disconnect_by_func(self._on_teaching_order_first_draw)
-        GLib.idle_add(self._fix_teaching_order_heights_after_draw)
-
     def _fix_teaching_order_heights_after_draw(self):
         # Disconnect model before batch clear+re-add so GTK doesn't redraw on every append,
-        # then reconnect — this forces a height remeasure with the now-initialized render context.
+        # then reconnect — this forces a height remeasure with a fully initialized render context.
         tv = self.teachingOrderTreeView
         ls = self.teachingOrderListStore
         rows = [[row[0], row[1], row[2], row[3]] for row in ls]
@@ -3777,6 +3777,7 @@ will be output in decomposed format.""")
         for row in rows:
             ls.append(row)
         tv.set_model(ls)
+        self._teaching_order_heights_fixed = True
         return False
 
     def UpdateFilterCancelButton(self):
@@ -4330,11 +4331,8 @@ will be output in decomposed format.""")
         for col in self.teachingOrderTreeView.get_columns():
             col.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
         self.teachingOrderTreeView.set_fixed_height_mode(True)
-        # Connect to the first draw of the Teaching Order TreeView. After that draw completes,
-        # repopulate the list so GTK measures row heights with a fully initialized render context.
-        # (idle_add and map-signal approaches fire too early — before GTK has the context needed
-        # to correctly measure Pango markup row heights.)
-        self.teachingOrderTreeView.connect('draw', self._on_teaching_order_first_draw)
+        # Flag so the height remeasure only fires once (first time rows are populated).
+        self._teaching_order_heights_fixed = False
 
         # prepare the analysis dialogs for future use
         self.theAffixesDialog = AffixesDialog()
