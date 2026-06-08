@@ -3253,8 +3253,7 @@ introducing the letters in a primer.""")
                     myGlobalWindow.analysis.CalculateTeachingOrder(myGlobalWindow.affixesExcluded.get_active(),
                                                                    myGlobalWindow.countEachWord.get_active())
                     myGlobalWindow.analysis.UpdateTeachingOrderList(myGlobalWindow.teachingOrderListStore)
-                    if not myGlobalWindow._teaching_order_heights_fixed:
-                        GLib.idle_add(myGlobalWindow._fix_teaching_order_heights_after_draw)
+                    GLib.idle_add(myGlobalWindow._fix_teaching_order_heights_after_draw)
                     # reset the selection of the Teaching Order to the beginning of the lists
                     treeview = myGlobalWindow.teachingOrderTreeView
                     treeview.get_selection().select_path(Gtk.TreePath("0"))
@@ -3368,7 +3367,6 @@ decomposed format, which may be different than your original source files.""")
         text = myGlobalBuilder.get_object("lessonTextsTextBuffer")
         text.set_text("")
         self.teachingOrderListStore.clear()
-        self._teaching_order_heights_fixed = False
         self.ShowSummaryStatusBar()
         # make sure there is no project name, including in the window title
         myGlobalProjectName = ""
@@ -3545,6 +3543,9 @@ will be output in decomposed format.""")
                 # time the user switches to that tab
                 saved_teachingOrderChanged = self.analysis.teachingOrderChanged
                 saved_dataChanged = self.analysis.dataChanged
+                # Clear teaching order before ApplyNewFont so its fixed_height_mode
+                # reset sees an empty model (fixed_height → -1, remeasured on next draw).
+                self.teachingOrderListStore.clear()
                 # set the new font, and make sure it gets applied through the window
                 myGlobalRenderer.SetFont(options[0])
                 self.ApplyNewFont()
@@ -3767,17 +3768,19 @@ will be output in decomposed format.""")
         return result
 
     def _fix_teaching_order_heights_after_draw(self):
-        # Disconnect model before batch clear+re-add so GTK doesn't redraw on every append,
-        # then reconnect — this forces a height remeasure with a fully initialized render context.
+        # Disconnect the model, repopulate, and reconnect. This forces GTK to remeasure
+        # row heights with a fully initialized render context (fixed_height was already
+        # reset to -1 by ApplyNewFont, so the remeasure uses the current font).
         tv = self.teachingOrderTreeView
         ls = self.teachingOrderListStore
         rows = [[row[0], row[1], row[2], row[3]] for row in ls]
+        if not rows:
+            return False
         tv.set_model(None)
         ls.clear()
         for row in rows:
             ls.append(row)
         tv.set_model(ls)
-        self._teaching_order_heights_fixed = True
         return False
 
     def UpdateFilterCancelButton(self):
@@ -4176,6 +4179,12 @@ will be output in decomposed format.""")
         self.teachingOrderLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
         self.teachingOrderExamplesCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
         self.lessonTextsLetterCellRenderer.set_property('font-desc', myGlobalRenderer.vernFontDesc)
+        # Reset fixed_height_mode so GTK discards any stale cached row height from a
+        # previous project's font. With the teaching order list store empty at this point
+        # (cleared by NewProject or LoadProject before calling us), fixed_height resets to
+        # -1 and GTK will remeasure from the first row when rows are next populated.
+        self.teachingOrderTreeView.set_fixed_height_mode(False)
+        self.teachingOrderTreeView.set_fixed_height_mode(True)
         # need to do this additional step to make sure that resized fonts are handled appropriately
         self.wordListTreeView.get_column(0).queue_resize()
         self.teachingOrderTreeView.get_column(0).queue_resize()
@@ -4331,8 +4340,6 @@ will be output in decomposed format.""")
         for col in self.teachingOrderTreeView.get_columns():
             col.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
         self.teachingOrderTreeView.set_fixed_height_mode(True)
-        # Flag so the height remeasure only fires once (first time rows are populated).
-        self._teaching_order_heights_fixed = False
 
         # prepare the analysis dialogs for future use
         self.theAffixesDialog = AffixesDialog()
