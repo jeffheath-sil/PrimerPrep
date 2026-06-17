@@ -18,6 +18,9 @@
 # © 2026 SIL Global
 #
 # Modifications:
+# 4.03 JCH Jun 2026
+#    Fix clipped Arabic combining diacritics in Lesson Texts when filter matches the base character;
+#      cluster and mark in bold the entire run (the base character and its diacritics)
 # 4.02 JCH Jun 2026
 #    Additional tweaks for teaching order row height issues
 # 4.01 JCH Jun 2026
@@ -179,7 +182,7 @@
 #       (commas considered vowel marks in Scheherazade Compact with Graphite)
 
 APP_NAME = "PrimerPrep"
-progVersion = "4.02"
+progVersion = "4.03"
 progYear = "2026"
 dataModelVersion = 3
 DEBUG = False
@@ -3997,9 +4000,22 @@ will be output in decomposed format.""")
                 index = text.find(filter_text, search_pos)
                 if index == -1:
                     break       # no more
+                # Expand the match to cover the full grapheme cluster so the
+                # base character and all its diacritics share one Pango run.
+                # A tag boundary inside a cluster prevents HarfBuzz from
+                # clustering them, breaking GPOS mark positioning (marks end
+                # up clipped or invisible).
+                match_start_pos = index
+                match_end_pos = index + len(filter_text)
+                # extend forward past any trailing combining marks
+                while match_end_pos < len(text) and unicodedata.category(text[match_end_pos]) == 'Mn':
+                    match_end_pos += 1
+                # backtrack to include the base character (if match is on combining mark)
+                while match_start_pos > 0 and unicodedata.category(text[match_start_pos]) == 'Mn':
+                    match_start_pos -= 1
                 # convert offset (int) to Gtk.TextIter range
-                match_start = buffer.get_iter_at_offset(index)
-                match_end = buffer.get_iter_at_offset(index + len(filter_text))
+                match_start = buffer.get_iter_at_offset(match_start_pos)
+                match_end = buffer.get_iter_at_offset(match_end_pos)
                 buffer.apply_tag(self.filterTag, match_start, match_end)
                 # start after that match
                 search_pos = index + len(filter_text)

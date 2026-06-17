@@ -2,3 +2,4 @@
 /locale/
 __pycache__/
 .claude/
+.vscode/

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generated with glade 3.40.0 -->
 <interface>
-  <requires lib="gtk+" version="3.0"/>
+  <requires lib="gtk+" version="3.24"/>
   <object class="GtkFileFilter" id="allfilefilter"/>
   <object class="GtkListStore" id="concordanceListStore">
     <columns>
@@ -14,6 +14,12 @@
     </columns>
   </object>
   <object class="GtkTextBuffer" id="configureSFMTextBuffer"/>
+  <object class="GtkListStore" id="consonantListStore">
+    <columns>
+      <!-- column-name Consonant -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkTextBuffer" id="divideWordTextBuffer"/>
   <object class="GtkListStore" id="fileListStore">
     <columns>
@@ -26,7 +32,7 @@
     <property name="height-request">500</property>
     <property name="can-focus">False</property>
     <property name="border-width">5</property>
-    <property name="title">Select example words to display</property>
+    <property name="title" translatable="yes">Select example words to display</property>
     <property name="modal">True</property>
     <property name="type-hint">normal</property>
     <child internal-child="vbox">
@@ -266,7 +272,6 @@
                       <object class="GtkBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="orientation">horizontal</property>
                         <property name="halign">center</property>
                         <property name="spacing">20</property>
                         <child>
@@ -350,8 +355,8 @@
                           <object class="GtkLabel" id="filterAndLabel">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
-                            <property name="label" translatable="yes">AND</property>
                             <property name="valign">center</property>
+                            <property name="label" translatable="yes">AND</property>
                             <attributes>
                               <attribute name="weight" value="bold"/>
                             </attributes>
@@ -450,9 +455,8 @@
                       <object class="GtkBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="orientation">vertical</property>
-                        <property name="spacing">0</property>
                         <property name="halign">center</property>
+                        <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkLabel" id="filterAtLeastOneLabel">
                             <property name="visible">True</property>
@@ -611,12 +615,6 @@
       <column type="gchararray"/>
     </columns>
   </object>
-  <object class="GtkListStore" id="consonantListStore">
-    <columns>
-      <!-- column-name Consonant -->
-      <column type="gchararray"/>
-    </columns>
-  </object>
   <object class="GtkListStore" id="wordBreakListStore">
     <columns>
       <!-- column-name Word-Break -->
@@ -649,9 +647,9 @@
     <property name="name">mainWindow</property>
     <property name="can-focus">False</property>
     <property name="title">PrimerPrep</property>
+    <property name="window-position">center</property>
     <property name="default-width">1100</property>
     <property name="default-height">660</property>
-    <property name="window-position">center</property>
     <signal name="delete-event" handler="on_mainWindow_delete_event" swapped="no"/>
     <child>
       <object class="GtkVBox" id="mainvbox">
@@ -1500,7 +1498,6 @@ the Language:</property>
                   <object class="GtkBox">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="orientation">horizontal</property>
                     <property name="halign">end</property>
                     <property name="spacing">5</property>
                     <child>
@@ -1539,7 +1536,6 @@ the Language:</property>
                   <object class="GtkScrolledWindow" id="teachingOrderScrolledWindow">
                     <property name="visible">True</property>
                     <property name="can-focus">True</property>
-                    <property name="expand">True</property>
                     <child>
                       <object class="GtkTreeView" id="teachingOrderTreeView">
                         <property name="visible">True</property>
@@ -2480,6 +2476,166 @@ the Language:</property>
       <action-widget response="1">configuresfmokbutton</action-widget>
     </action-widgets>
   </object>
+  <object class="GtkDialog" id="defineVowelsDialog">
+    <property name="width-request">350</property>
+    <property name="height-request">600</property>
+    <property name="can-focus">False</property>
+    <property name="border-width">5</property>
+    <property name="title" translatable="yes">Define Vowels</property>
+    <property name="modal">True</property>
+    <property name="window-position">center-on-parent</property>
+    <property name="type-hint">dialog</property>
+    <property name="transient-for">mainWindow</property>
+    <child internal-child="vbox">
+      <object class="GtkBox" id="definevowelsdialog-vbox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox" id="definevowelsdialog-action_area">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="layout-style">end</property>
+            <child>
+              <object class="GtkButton" id="definevowelsokbutton">
+                <property name="label">gtk-ok</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="use-stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="definevowelscancelbutton">
+                <property name="label">gtk-cancel</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="use-stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="definevowelsinstructionslabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Double-click a letter to change its column</property>
+            <attributes>
+              <attribute name="weight" value="bold"/>
+            </attributes>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="padding">5</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkHBox" id="definevowelshbox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <child>
+              <object class="GtkScrolledWindow" id="definevowelsscrolledwindow1">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <child>
+                  <object class="GtkTreeView" id="vowelTreeView">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="model">vowelListStore</property>
+                    <property name="headers-clickable">False</property>
+                    <property name="rules-hint">True</property>
+                    <child internal-child="selection">
+                      <object class="GtkTreeSelection"/>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn" id="vowelColumn">
+                        <property name="title" translatable="yes">Vowels</property>
+                        <property name="sort-column-id">0</property>
+                        <child>
+                          <object class="GtkCellRendererText" id="vowelCellRenderer"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkScrolledWindow" id="definevowelsscrolledwindow2">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <child>
+                  <object class="GtkTreeView" id="consonantTreeView">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="model">consonantListStore</property>
+                    <property name="headers-clickable">False</property>
+                    <property name="rules-hint">True</property>
+                    <child internal-child="selection">
+                      <object class="GtkTreeSelection"/>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn" id="consonantColumn">
+                        <property name="title" translatable="yes">Consonants</property>
+                        <property name="sort-column-id">0</property>
+                        <child>
+                          <object class="GtkCellRendererText" id="consonantCellRenderer"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+    <action-widgets>
+      <action-widget response="1">definevowelsokbutton</action-widget>
+      <action-widget response="0">definevowelscancelbutton</action-widget>
+    </action-widgets>
+  </object>
   <object class="GtkDialog" id="digraphsDialog">
     <property name="width-request">500</property>
     <property name="height-request">300</property>
@@ -3312,166 +3468,6 @@ Affixes (word sections with '-') will be excluded or counted as separate words, 
     <action-widgets>
       <action-widget response="1">wordeditokbutton</action-widget>
       <action-widget response="0">wordeditcancelbutton</action-widget>
-    </action-widgets>
-  </object>
-  <object class="GtkDialog" id="defineVowelsDialog">
-    <property name="width-request">350</property>
-    <property name="height-request">600</property>
-    <property name="can-focus">False</property>
-    <property name="border-width">5</property>
-    <property name="title" translatable="yes">Define Vowels</property>
-    <property name="modal">True</property>
-    <property name="window-position">center-on-parent</property>
-    <property name="type-hint">dialog</property>
-    <property name="transient-for">mainWindow</property>
-    <child internal-child="vbox">
-      <object class="GtkBox" id="definevowelsdialog-vbox">
-        <property name="visible">True</property>
-        <property name="can-focus">False</property>
-        <property name="orientation">vertical</property>
-        <property name="spacing">2</property>
-        <child internal-child="action_area">
-          <object class="GtkButtonBox" id="definevowelsdialog-action_area">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="layout-style">end</property>
-            <child>
-              <object class="GtkButton" id="definevowelsokbutton">
-                <property name="label">gtk-ok</property>
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <property name="receives-default">True</property>
-                <property name="use-stock">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">False</property>
-                <property name="position">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton" id="definevowelscancelbutton">
-                <property name="label">gtk-cancel</property>
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <property name="receives-default">True</property>
-                <property name="use-stock">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">False</property>
-                <property name="position">1</property>
-              </packing>
-            </child>
-          </object>
-          <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="position">0</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkLabel" id="definevowelsinstructionslabel">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="label" translatable="yes">Double-click a letter to change its column</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
-          </object>
-          <packing>
-            <property name="expand">False</property>
-            <property name="fill">False</property>
-            <property name="padding">5</property>
-            <property name="position">1</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkHBox" id="definevowelshbox">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <child>
-              <object class="GtkScrolledWindow" id="definevowelsscrolledwindow1">
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <child>
-                  <object class="GtkTreeView" id="vowelTreeView">
-                    <property name="visible">True</property>
-                    <property name="can-focus">True</property>
-                    <property name="model">vowelListStore</property>
-                    <property name="headers-clickable">False</property>
-                    <property name="rules-hint">True</property>
-                    <child internal-child="selection">
-                      <object class="GtkTreeSelection"/>
-                    </child>
-                    <child>
-                      <object class="GtkTreeViewColumn" id="vowelColumn">
-                        <property name="title" translatable="yes">Vowels</property>
-                        <property name="sort-column-id">0</property>
-                        <child>
-                          <object class="GtkCellRendererText" id="vowelCellRenderer"/>
-                          <attributes>
-                            <attribute name="text">0</attribute>
-                          </attributes>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-              <packing>
-                <property name="expand">True</property>
-                <property name="fill">True</property>
-                <property name="position">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkScrolledWindow" id="definevowelsscrolledwindow2">
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <child>
-                  <object class="GtkTreeView" id="consonantTreeView">
-                    <property name="visible">True</property>
-                    <property name="can-focus">True</property>
-                    <property name="model">consonantListStore</property>
-                    <property name="headers-clickable">False</property>
-                    <property name="rules-hint">True</property>
-                    <child internal-child="selection">
-                      <object class="GtkTreeSelection"/>
-                    </child>
-                    <child>
-                      <object class="GtkTreeViewColumn" id="consonantColumn">
-                        <property name="title" translatable="yes">Consonants</property>
-                        <property name="sort-column-id">0</property>
-                        <child>
-                          <object class="GtkCellRendererText" id="consonantCellRenderer"/>
-                          <attributes>
-                            <attribute name="text">0</attribute>
-                          </attributes>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-              <packing>
-                <property name="expand">True</property>
-                <property name="fill">True</property>
-                <property name="position">1</property>
-              </packing>
-            </child>
-          </object>
-          <packing>
-            <property name="expand">True</property>
-            <property name="fill">True</property>
-            <property name="position">2</property>
-          </packing>
-        </child>
-      </object>
-    </child>
-    <action-widgets>
-      <action-widget response="1">definevowelsokbutton</action-widget>
-      <action-widget response="0">definevowelscancelbutton</action-widget>
     </action-widgets>
   </object>
 </interface>
