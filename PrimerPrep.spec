@@ -12,6 +12,7 @@ a1 = Analysis(['PrimerPrep.py'],
 		('PrimerPrepCancelFilterON.png', '.'), ('PrimerPrepCancelFilterOFF.png', '.'),
 		('Help', 'Help'), ('translations', 'translations')],
 	hiddenimports=['lexicon_import'],
+	excludes=['tkinter'],
 	hookspath=[],
 	runtime_hooks=[],
 	win_no_prefer_redirects=False,
@@ -40,6 +41,7 @@ a2 = Analysis(['PrimerPrepSplash.py'],
 	# extra files required, along with destination folder
 	datas=[('PrimerPrepSplash.png', '.')],
 	hiddenimports=[],
+	excludes=['tkinter'],
 	hookspath=[],
 	runtime_hooks=[],
 	win_no_prefer_redirects=False,
@@ -59,6 +61,42 @@ exe2 = EXE(pyz2,
 	windowed=True,
 	console=False,
 	icon='PrimerPrep.ico')
+
+# Filter GTK locale data to only languages relevant to PrimerPrep users
+SUPPORTED_LOCALES = {
+	'en', 'fr', 'es', 'fa', 'ps',        # PrimerPrep UI languages
+	'de', 'nl', 'pt',                    # Western Europe (SIL staff)
+	'ar', 'ur', 'tr', 'ru',              # Middle East / Central Asia
+	'hi', 'id', 'ms', 'th', 'vi', 'km',  # South & Southeast Asia
+	'zh_CN', 'zh_TW',                    # East Asia
+	'sw', 'ha', 'am',                    # Africa
+}
+
+def filter_locales(datas):
+	result = []
+	for src, dst in datas:
+		parts = dst.replace('\\', '/').split('/')
+		if len(parts) >= 3 and parts[0] == 'share' and parts[1] == 'locale':
+			if parts[2] in SUPPORTED_LOCALES:
+				result.append((src, dst))
+		else:
+			result.append((src, dst))
+	return result
+
+a1.datas = filter_locales(a1.datas)
+a2.datas = filter_locales(a2.datas)
+
+# Strip Adwaita cursor images (~19 MB) -- cursor themes are handled by Windows, not the GTK bundle
+def filter_icons(datas):
+	result = []
+	for src, dst in datas:
+		if dst.replace('\\', '/').startswith('share/icons/Adwaita/cursors'):
+			continue
+		result.append((src, dst))
+	return result
+
+a1.datas = filter_icons(a1.datas)
+a2.datas = filter_icons(a2.datas)
 
 coll = COLLECT(exe1,
 	a1.binaries,

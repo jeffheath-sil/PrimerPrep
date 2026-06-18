@@ -208,14 +208,14 @@ import codecs
 import unicodedata
 import xml.etree.ElementTree as ET
 import pickle
-class UnknownProjectType(Exception):
-    pass
-import numpy as np
 import configparser
 import webbrowser
 #  for internationalization
 import gettext
 import json
+
+class UnknownProjectType(Exception):
+    pass
 
 # global variable to store the program path
 myGlobalProgramPath = ''
@@ -2583,7 +2583,7 @@ Please try again.""")
         # Initialize matrix of zeros
         rows = len(s)+1
         cols = len(t)+1
-        distance = np.zeros((rows,cols),dtype = int)
+        distance = [[0]*cols for _ in range(rows)]
         
         # Populate matrix of zeros with the indices of each character of both strings
         for i in range(1, rows):

@@ -1369,7 +1369,7 @@ the Language:</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkVBox" id="wordiscoveryvboxR">
+                  <object class="GtkVBox" id="wordDiscoveryvboxR">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
                     <property name="spacing">5</property>
@@ -1379,7 +1379,7 @@ the Language:</property>
                         <property name="can-focus">False</property>
                         <property name="spacing">5</property>
                         <child>
-                          <object class="GtkLabel" id="filterLabel">
+                          <object class="GtkLabel" id="wordDiscoveryFilterLabel">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <property name="label" translatable="yes">Filter:</property>
@@ -1501,7 +1501,7 @@ the Language:</property>
                     <property name="halign">end</property>
                     <property name="spacing">5</property>
                     <child>
-                      <object class="GtkLabel">
+                      <object class="GtkLabel" id="teachingOrderFilterLabel">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                         <property name="label" translatable="yes">Filter:</property>
