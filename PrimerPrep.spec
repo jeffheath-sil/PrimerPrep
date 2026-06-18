@@ -74,13 +74,13 @@ SUPPORTED_LOCALES = {
 
 def filter_locales(datas):
 	result = []
-	for src, dst in datas:
-		parts = dst.replace('\\', '/').split('/')
+	for item in datas:
+		parts = item[1].replace('\\', '/').split('/')
 		if len(parts) >= 3 and parts[0] == 'share' and parts[1] == 'locale':
 			if parts[2] in SUPPORTED_LOCALES:
-				result.append((src, dst))
+				result.append(item)
 		else:
-			result.append((src, dst))
+			result.append(item)
 	return result
 
 a1.datas = filter_locales(a1.datas)
@@ -89,10 +89,10 @@ a2.datas = filter_locales(a2.datas)
 # Strip Adwaita cursor images (~19 MB) -- cursor themes are handled by Windows, not the GTK bundle
 def filter_icons(datas):
 	result = []
-	for src, dst in datas:
-		if dst.replace('\\', '/').startswith('share/icons/Adwaita/cursors'):
+	for item in datas:
+		if item[1].replace('\\', '/').startswith('share/icons/Adwaita/cursors'):
 			continue
-		result.append((src, dst))
+		result.append(item)
 	return result
 
 a1.datas = filter_icons(a1.datas)
